@@ -12,6 +12,7 @@ import { NotesSection } from "@/components/chart/NotesSection";
 import { TasksSection } from "@/components/chart/TasksSection";
 import { PriorAuthSection } from "@/components/chart/PriorAuthSection";
 import { ReferralsSection } from "@/components/chart/ReferralsSection";
+import { ChatAssistant } from "@/components/chart/ChatAssistant";
 
 const severityTone = { LOW: "neutral", MEDIUM: "amber", HIGH: "red" } as const;
 const statusTone = {
@@ -161,6 +162,8 @@ export function UnifiedChartView({ patient, staff }: UnifiedChartViewProps) {
       </div>
 
       <ReferralsSection patientId={patient.id} referrals={patient.referrals} staff={staff} />
+
+      <ChatAssistant patientId={patient.id} patientName={`${patient.firstName} ${patient.lastName}`} />
     </div>
   );
 }
