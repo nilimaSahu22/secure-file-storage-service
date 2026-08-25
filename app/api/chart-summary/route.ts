@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       model: getModel(),
       max_tokens: 512,
       system:
-        "You are a clinical documentation assistant. Summarize the patient chart below in 3-4 concise sentences for a clinician reviewing the chart before a visit. Focus on active problems, notable trends, and anything requiring attention. Do not invent information not present in the chart.",
+        "You are a clinical documentation assistant. Summarize the patient chart below in 3-4 concise sentences for a clinician reviewing the chart before a visit. Focus on active problems, notable trends, and anything requiring attention. Do not invent information not present in the chart. Respond in plain prose only — no markdown, no headers, no bullet points, no bold or italic formatting. Write it as sentences a clinician would read in a single paragraph.",
       messages: [{ role: "user", content: chartContext }],
     });
 
