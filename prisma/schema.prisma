@@ -1,0 +1,258 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  DOCTOR
+  NURSE
+  ADMIN
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum PriorAuthStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  DENIED
+}
+
+enum ReferralStatus {
+  PENDING
+  ACCEPTED
+  COMPLETED
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model StaffUser {
+  id         String  @id @default(uuid())
+  name       String
+  role       Role
+  department String?
+
+  notes         ClinicalNote[]
+  appointments  Appointment[]
+  tasksAssigned Task[]
+  referralsFrom Referral[]     @relation("ReferralFrom")
+  referralsTo   Referral[]     @relation("ReferralTo")
+}
+
+model Patient {
+  id           String   @id @default(uuid())
+  firstName    String
+  lastName     String
+  dateOfBirth  DateTime
+  gender       String
+  contactPhone String?
+  contactEmail String?
+  createdAt    DateTime @default(now())
+
+  medications    Medication[]
+  allergies      Allergy[]
+  vitals         VitalSign[]
+  testResults    TestResult[]
+  notes          ClinicalNote[]
+  appointments   Appointment[]
+  visits         Visit[]
+  tasks          Task[]
+  priorAuths     PriorAuthorization[]
+  referrals      Referral[]
+  chartSummaries ChartSummary[]
+  alerts         ClinicalAlert[]
+}
+
+model Medication {
+  id           String   @id @default(uuid())
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name         String
+  dosage       String
+  frequency    String
+  prescribedAt DateTime @default(now())
+
+  @@index([patientId])
+}
+
+model Allergy {
+  id        String        @id @default(uuid())
+  patientId String
+  patient   Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  allergen  String
+  reaction  String?
+  severity  AlertSeverity @default(MEDIUM)
+
+  @@index([patientId])
+}
+
+model VitalSign {
+  id         String   @id @default(uuid())
+  patientId  String
+  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  visitId    String?
+  visit      Visit?   @relation(fields: [visitId], references: [id])
+  type       String
+  value      String
+  isAbnormal Boolean  @default(false)
+  recordedAt DateTime @default(now())
+
+  @@index([patientId])
+}
+
+model TestResult {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  testName    String
+  result      String
+  normalRange String?
+  recordedAt  DateTime @default(now())
+
+  @@index([patientId])
+}
+
+model Appointment {
+  id          String            @id @default(uuid())
+  patientId   String
+  patient     Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  providerId  String
+  provider    StaffUser         @relation(fields: [providerId], references: [id])
+  scheduledAt DateTime
+  status      AppointmentStatus @default(SCHEDULED)
+  reason      String?
+
+  @@index([patientId])
+  @@index([providerId])
+}
+
+model Visit {
+  id         String   @id @default(uuid())
+  patientId  String
+  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  transcript String?
+  startedAt  DateTime @default(now())
+
+  vitals VitalSign[]
+  note   ClinicalNote?
+
+  @@index([patientId])
+}
+
+model ClinicalNote {
+  id            String    @id @default(uuid())
+  patientId     String
+  patient       Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        StaffUser @relation(fields: [authorId], references: [id])
+  visitId       String?   @unique
+  visit         Visit?    @relation(fields: [visitId], references: [id])
+  subjective    String
+  objective     String
+  assessment    String
+  plan          String
+  isAiGenerated Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  codingSuggestions CodingSuggestion[]
+  tasks             Task[]
+
+  @@index([patientId])
+}
+
+model CodingSuggestion {
+  id          String       @id @default(uuid())
+  noteId      String
+  note        ClinicalNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  code        String
+  codeSystem  String
+  description String
+  rationale   String
+  createdAt   DateTime     @default(now())
+
+  @@index([noteId])
+}
+
+model Task {
+  id              String        @id @default(uuid())
+  patientId       String
+  patient         Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  noteId          String?
+  note            ClinicalNote? @relation(fields: [noteId], references: [id])
+  assignedToId    String?
+  assignedTo      StaffUser?    @relation(fields: [assignedToId], references: [id])
+  description     String
+  status          TaskStatus    @default(PENDING)
+  isAutoGenerated Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+
+  @@index([patientId])
+}
+
+model PriorAuthorization {
+  id                 String          @id @default(uuid())
+  patientId          String
+  patient            Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  serviceDescription String
+  status             PriorAuthStatus @default(SUBMITTED)
+  submittedAt        DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([patientId])
+}
+
+model Referral {
+  id             String         @id @default(uuid())
+  patientId      String
+  patient        Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  fromProviderId String
+  fromProvider   StaffUser      @relation("ReferralFrom", fields: [fromProviderId], references: [id])
+  toProviderId   String
+  toProvider     StaffUser      @relation("ReferralTo", fields: [toProviderId], references: [id])
+  reason         String
+  status         ReferralStatus @default(PENDING)
+  createdAt      DateTime       @default(now())
+
+  @@index([patientId])
+}
+
+model ChartSummary {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  summary     String
+  generatedAt DateTime @default(now())
+
+  @@index([patientId])
+}
+
+model ClinicalAlert {
+  id          String        @id @default(uuid())
+  patientId   String
+  patient     Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type        String
+  message     String
+  severity    AlertSeverity @default(MEDIUM)
+  triggeredAt DateTime      @default(now())
+
+  @@index([patientId])
+}

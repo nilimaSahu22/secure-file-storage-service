@@ -1,0 +1,196 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import Link from "next/link";
+import { format } from "date-fns";
+import { Plus, CalendarDays } from "lucide-react";
+import type { Appointment, Patient, StaffUser } from "@prisma/client";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
+import { Input } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { Badge } from "@/components/ui/Badge";
+import {
+  bookAppointmentAction,
+  rescheduleAppointmentAction,
+  cancelAppointmentAction,
+} from "@/lib/actions/appointments";
+
+type AppointmentRow = Appointment & { patient: Patient; provider: StaffUser };
+
+interface AppointmentsClientProps {
+  appointments: AppointmentRow[];
+  patients: Patient[];
+  providers: StaffUser[];
+}
+
+const STATUS_TONE = {
+  SCHEDULED: "blue",
+  COMPLETED: "green",
+  CANCELLED: "neutral",
+  NO_SHOW: "amber",
+} as const;
+
+function toLocalInputValue(date: Date): string {
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+export function AppointmentsClient({ appointments, patients, providers }: AppointmentsClientProps) {
+  const [bookOpen, setBookOpen] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<AppointmentRow | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [patientId, setPatientId] = useState(patients[0]?.id ?? "");
+  const [providerId, setProviderId] = useState(providers[0]?.id ?? "");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [reason, setReason] = useState("");
+  const [rescheduleAt, setRescheduleAt] = useState("");
+
+  async function onBook(e: FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await bookAppointmentAction({ patientId, providerId, scheduledAt, reason });
+      setBookOpen(false);
+      setScheduledAt("");
+      setReason("");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onReschedule(e: FormEvent) {
+    e.preventDefault();
+    if (!rescheduleTarget) return;
+    setSubmitting(true);
+    try {
+      await rescheduleAppointmentAction(rescheduleTarget.id, rescheduleAt);
+      setRescheduleTarget(null);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onCancel(id: string) {
+    await cancelAppointmentAction(id);
+  }
+
+  return (
+    <div className="p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
+          <CalendarDays size={18} /> Appointments
+        </h1>
+        <Button onClick={() => setBookOpen(true)}>
+          <Plus size={14} /> New Appointment
+        </Button>
+      </div>
+
+      {appointments.length === 0 ? (
+        <p className="py-16 text-center text-sm text-slate-400">No appointments scheduled.</p>
+      ) : (
+        <Card className="p-0">
+          <div className="divide-y divide-slate-100">
+            {appointments.map((a) => (
+              <div key={a.id} className="flex items-center justify-between gap-4 p-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">
+                    <Link href={`/dashboard/patients/${a.patientId}`} className="hover:underline">
+                      {a.patient.firstName} {a.patient.lastName}
+                    </Link>{" "}
+                    <span className="font-normal text-slate-500">with {a.provider.name}</span>
+                  </p>
+                  <p className="text-xs text-slate-500">{a.reason ?? "Visit"}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-sm text-slate-700">{format(a.scheduledAt, "MMM d, yyyy")}</p>
+                    <p className="text-xs text-slate-400">{format(a.scheduledAt, "h:mm a")}</p>
+                  </div>
+                  <Badge tone={STATUS_TONE[a.status]}>{a.status.replace("_", " ")}</Badge>
+                  {a.status === "SCHEDULED" && (
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setRescheduleTarget(a);
+                          setRescheduleAt(toLocalInputValue(a.scheduledAt));
+                        }}
+                      >
+                        Reschedule
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => onCancel(a.id)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Modal open={bookOpen} onClose={() => setBookOpen(false)} title="Book Appointment">
+        <form onSubmit={onBook} className="flex flex-col gap-3">
+          <Select id="book-patient" label="Patient" value={patientId} onChange={(e) => setPatientId(e.target.value)}>
+            {patients.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.firstName} {p.lastName}
+              </option>
+            ))}
+          </Select>
+          <Select id="book-provider" label="Provider" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+          <Input
+            id="book-datetime"
+            type="datetime-local"
+            label="Date & time"
+            required
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+          />
+          <Input id="book-reason" label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <div className="mt-2 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setBookOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Booking…" : "Book"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={!!rescheduleTarget} onClose={() => setRescheduleTarget(null)} title="Reschedule Appointment">
+        <form onSubmit={onReschedule} className="flex flex-col gap-3">
+          <Input
+            id="reschedule-datetime"
+            type="datetime-local"
+            label="New date & time"
+            required
+            value={rescheduleAt}
+            onChange={(e) => setRescheduleAt(e.target.value)}
+          />
+          <div className="mt-2 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setRescheduleTarget(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+}

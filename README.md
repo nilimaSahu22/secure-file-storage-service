@@ -1,152 +1,146 @@
-# Filework — Secure File Storage Service
+# Meridian — AI-Powered EHR Demo
 
-A secure file storage application that lets authenticated users upload, manage, and share
-files. Files are private by default; owners can flip a file to public to generate a
-shareable link. Uploads support files up to 500MB.
+A client-facing product demo/POC for an AI-assisted electronic health record system,
+inspired by Greenway Health's Novare positioning. Built to show a unified patient chart,
+AI-assisted charting and coding, and a revenue-cycle story — **not** a real EHR.
 
-## Architecture
+> **This is a demo environment. All patients, notes, and metrics are synthetic sample
+> data.** No real patient information is used or stored. Nothing here is validated for
+> real clinical use, billing, or coding decisions.
 
-Two independent deployables:
+## Stack
 
-```
-backend/    Express + TypeScript REST API (auth, file metadata, S3 orchestration)
-frontend/   React + TypeScript (Vite) single-page app
-```
-
-- **Auth**: stateless JWT — a short-lived access token is kept in memory on the client and
-  sent as a `Bearer` header; a longer-lived refresh token lives in an `httpOnly`, `Secure`,
-  `SameSite=Strict` cookie scoped to `/api/auth`. There is no refresh-token database table
-  (an accepted simplification — see [Known limitations](#known-limitations)), so refreshing
-  never rotates the cookie, it only issues a new access token.
-- **Storage**: files are uploaded directly from the browser to AWS S3 using a presigned
-  POST URL, so large uploads never pass through the Express server. The backend only ever
-  handles file *metadata* (owner, name, size, visibility, share token) in PostgreSQL via
-  Prisma.
-- **Upload lifecycle**: `POST /api/files` creates a `PENDING` row and returns a presigned
-  POST; the browser uploads straight to S3; `PATCH /api/files/:id/confirm` verifies the
-  object actually landed (via `HeadObject`, comparing size) before flipping the row to
-  `COMPLETED`. Only `COMPLETED` files are ever listed or shared.
+- **Next.js 16 (App Router) + TypeScript** — Server Components for reads, Server Actions
+  for mutations, Route Handlers for the three AI features and the admin reset endpoint
+- **PostgreSQL + Prisma** — all patient/clinical/appointment data (see [Decisions](#why-a-real-database) below)
+- **Tailwind CSS**, **Recharts** for the ROI dashboard chart, **lucide-react** for icons
+- **Anthropic API** (`@anthropic-ai/sdk`) — Claude Haiku 4.5, called only from server-side
+  route handlers
 
 ## Prerequisites
 
-- Node.js 20+ (developed against Node 24)
-- A PostgreSQL database (local or hosted)
-- An AWS account with an S3 bucket and an IAM user/role scoped to that bucket
+- Node.js 20+
+- A PostgreSQL database (a free-tier hosted instance such as [Neon](https://neon.tech)
+  is the easiest path — no local Postgres install needed)
+- An Anthropic API key
 
-## AWS S3 setup
-
-1. **Create a bucket** (any region). Block public access can stay fully enabled — all
-   reads/writes go through presigned URLs, the bucket itself is never public.
-2. **Create a least-privilege IAM user** (or role) with a policy scoped to just this
-   bucket:
-
-   ```json
-   {
-     "Version": "2012-10-17",
-     "Statement": [
-       {
-         "Effect": "Allow",
-         "Action": ["s3:PutObject", "s3:GetObject", "s3:HeadObject", "s3:DeleteObject"],
-         "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME/*"
-       }
-     ]
-   }
-   ```
-
-3. **Configure CORS on the bucket** so the browser can POST directly to it from the
-   frontend origin (this is separate from the Express `cors()` middleware — without this,
-   uploads fail with a browser CORS error, not a server error):
-
-   ```json
-   [
-     {
-       "AllowedHeaders": ["*"],
-       "AllowedMethods": ["POST", "GET", "HEAD"],
-       "AllowedOrigins": ["http://localhost:5173"],
-       "ExposeHeaders": ["ETag"]
-     }
-   ]
-   ```
-
-   Add your deployed frontend origin to `AllowedOrigins` as well when you deploy.
-
-## Backend setup
+## Setup
 
 ```bash
-cd backend
 npm install
-cp .env.example .env   # then fill in real values, see table below
-npx prisma migrate dev # applies prisma/migrations against your database
-npm run dev             # http://localhost:4000
+cp .env.example .env   # fill in DATABASE_URL, ANTHROPIC_API_KEY, ADMIN_RESET_TOKEN
+npx prisma migrate deploy
+npm run db:seed
+npm run dev             # http://localhost:3000
 ```
 
-### Backend environment variables
+### Environment variables
 
-| Variable                | Description                                              |
-| ------------------------ | --------------------------------------------------------- |
-| `PORT`                  | Port the API listens on (default `4000`)                 |
-| `FRONTEND_URL`          | Origin allowed by CORS, e.g. `http://localhost:5173`      |
-| `DATABASE_URL`          | PostgreSQL connection string                              |
-| `JWT_ACCESS_SECRET`     | Secret for signing access tokens (15m expiry)             |
-| `JWT_REFRESH_SECRET`    | Secret for signing refresh tokens (7d expiry)              |
-| `AWS_ACCESS_KEY_ID`     | IAM user access key, scoped to the bucket above            |
-| `AWS_SECRET_ACCESS_KEY` | IAM user secret key                                        |
-| `AWS_REGION`            | Region the bucket lives in, e.g. `us-east-1`                |
-| `AWS_S3_BUCKET`         | Bucket name                                                 |
+| Variable | Description |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `ANTHROPIC_API_KEY` | Anthropic API key, used server-side only |
+| `ANTHROPIC_MODEL` | Model ID for all three AI features (default `claude-haiku-4-5-20251001`) |
+| `ADMIN_RESET_TOKEN` | Shared secret required to call `POST /api/admin/reset-demo` from outside the app (see below) |
 
-## Frontend setup
+## Resetting demo data before a client meeting
 
-```bash
-cd frontend
-npm install
-cp .env.example .env   # points VITE_API_URL at the backend
-npm run dev             # http://localhost:5173
+The app is served from a single hosted link and reused across separate client
+meetings. **Reset the data before every meeting** so nobody sees state left over from a
+prior session:
+
+- **In-app**: log in, switch role to Admin, go to **Admin → Reset Demo Data**, confirm.
+- **From a script** (e.g. a pre-meeting CI step): 
+
+  ```bash
+  curl -X POST https://your-deployment/api/admin/reset-demo \
+    -H "x-admin-reset-token: $ADMIN_RESET_TOKEN"
+  ```
+
+Both paths truncate every table and re-run `prisma/fixtures.ts`, so the result is
+identical either way.
+
+## Architecture notes
+
+### Cosmetic authentication
+
+Register/Login on the landing page do not validate against anything real — submitting
+either sets a mock session (`{name, role}`) in `localStorage` and routes into the app.
+There is no password hashing and no persisted account, even though a real database
+exists for clinical data. The role switcher in the dashboard topbar lets you view the
+app as Doctor, Nurse, or Admin at any time.
+
+### Why a real database
+
+Mock JSON was the original plan, but two things ruled it out once the delivery model
+was pinned down: the app is a single hosted link reused across separate client demos,
+not something run fresh per session. Serverless API routes don't reliably share
+in-process memory across invocations, so writes (AI-generated notes, tasks) could
+silently fail to persist within one demo. And a long-lived in-memory process would let
+one client's demo data bleed into the next client's session — a real risk in a sales
+context. Postgres + Prisma, reset before each meeting, solves both.
+
+### The three AI features
+
+All three call `claude-haiku-4-5-20251001` (configurable via `ANTHROPIC_MODEL`) from
+server-side route handlers only — the Anthropic client is never instantiated in client
+code, and the API key never reaches the browser.
+
+- **`POST /api/chart-summary`** — plain-text 3–4 sentence chart summary, triggered by
+  "Summarize Chart" on a patient's Unified Chart View.
+- **`POST /api/generate-note`** — structured-output SOAP note (via
+  `output_config.format` / Zod schema, not free-text parsing), triggered by "Generate
+  Note" on the Start Visit screen. Auto-generates 2–3 rule-based follow-up tasks on
+  save.
+- **`POST /api/suggest-codes`** — structured-output array of 2–3 ICD-10/CPT code
+  suggestions with rationale, triggered by "Suggest Codes" on a saved note.
+
+Every AI-generated artifact carries a visible **"AI Preview"** badge in the UI. No
+screen implies AI output is validated for clinical or billing use.
+
+### Clinical Decision Support
+
+Rule-based, not AI: adding a medication checks it against the patient's documented
+allergies (`lib/clinical/rules.ts`) and flags conflicts as a Clinical Alert; recording a
+vital compares it against hardcoded normal ranges and flags abnormal values inline. Both
+are illustrative rule sets for demo purposes, not a substitute for a real
+drug-interaction database.
+
+### Revenue Cycle / ROI Dashboard
+
+All figures on `/dashboard/roi` are static, clearly labeled illustrative estimates — not
+computed from this environment's data.
+
+## Project structure
+
+```
+app/
+  api/                      chart-summary, generate-note, suggest-codes, admin/reset-demo
+  dashboard/                patient list, patient chart, tasks, appointments, ROI, admin
+  login/ register/          cosmetic auth
+lib/
+  actions/                  Server Actions (mutations)
+  services/                 Prisma-backed data accessors — the layer every route/page reads through
+  ai/                       Anthropic client + chart-context builder
+  clinical/rules.ts         drug-allergy conflict + vital-range rules
+  auth/                     cosmetic session (localStorage + React context)
+prisma/
+  schema.prisma
+  fixtures.ts               seed data — also what "Reset Demo Data" re-runs
+  seed.ts                   thin runner for `npm run db:seed`
+components/
+  ui/                       shared primitives (Button, Input, Card, Badge, Modal, Select)
+  chart/                    Unified Chart View and its sections
+  dashboard/                shell, patient list, tasks, appointments
 ```
 
-### Frontend environment variables
+## Known limitations / scope cuts
 
-| Variable        | Description                          |
-| ---------------- | -------------------------------------- |
-| `VITE_API_URL`  | Base URL of the backend API             |
+Deliberately trimmed to keep the build focused on the sales-demo narrative:
 
-## Running both together
-
-Start the backend and frontend dev servers in separate terminals as shown above; the
-frontend proxies API calls to `VITE_API_URL` and relies on the backend's CORS
-configuration (`FRONTEND_URL`) to allow cookie-bearing requests.
-
-## Security
-
-- Passwords hashed with bcrypt (cost factor 12); never stored or logged in plaintext.
-- `/register` and `/login` are rate-limited to 10 requests / 15 minutes / IP.
-- Access tokens are held in memory only on the client (never `localStorage` or
-  `sessionStorage`); the refresh token is an `httpOnly` cookie, unreadable from JS.
-- Every file-scoped route runs an `ownsFile` check (404 if the file doesn't exist, 403 if
-  it belongs to someone else) before any read/write/delete.
-- The public share endpoint (`GET /api/share/:token`) returns an identical 404 response
-  whether the token doesn't exist or the file has been set back to private — this prevents
-  distinguishing "wrong token" from "valid token, now private."
-- Upload size is enforced at three layers: client-side pre-check, a Zod schema on
-  `POST /api/files`, and S3's own `content-length-range` POST policy condition (the
-  authoritative, un-bypassable enforcement point since the browser talks to S3 directly).
-- `helmet()` for standard security headers; CORS locked to `FRONTEND_URL` with
-  `credentials: true`.
-- All request bodies validated with Zod before touching business logic.
-- Centralized error handler never leaks stack traces or internal error details to clients.
-
-### Known limitations
-
-- **No server-side refresh-token revocation.** Since there's no refresh-token table,
-  logging out clears the cookie client-side but a stolen refresh token remains valid until
-  its natural 7-day expiry. A production system would track refresh tokens (or their
-  hashes) server-side to support revocation.
-
-## Future scope
-
-Deliberately left out of this build to keep scope focused on the core flows:
-
-- **Trash / soft delete** — move deleted files to a recoverable trash instead of hard
-  deleting, with restore and permanent-delete actions.
-- **Activity / audit log** — a record of uploads, visibility changes, downloads, and
-  deletes per user.
-- **Server-side refresh-token revocation** — see [Known limitations](#known-limitations).
+- **Patient Portal** — cut entirely. Wrong audience for a clinician/admin-facing pitch.
+- **Referrals** are a minimal create-and-list flow (no accept/complete workflow beyond
+  status display).
+- **Appointment scheduling** is a list-based book/reschedule/cancel flow, not a
+  day/week calendar widget.
+- **No real auth** — see [Cosmetic authentication](#cosmetic-authentication) above.
