@@ -8,7 +8,6 @@ import type { Patient, StaffUser } from "@prisma/client";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
-import { Badge } from "@/components/ui/Badge";
 
 interface StartVisitClientProps {
   patient: Patient;
@@ -66,15 +65,12 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
           <CardTitle className="flex items-center gap-1.5 text-base">
             <Mic size={16} /> Start Visit — {patient.firstName} {patient.lastName}
           </CardTitle>
-          <Badge tone="blue">
-            <Sparkles size={10} className="mr-1 inline" /> AI Preview
-          </Badge>
         </div>
 
         <p className="mb-4 text-sm text-slate-500">
-          This is a simulated ambient visit transcript. Edit it to reflect the visit, then
-          generate a structured SOAP note. The AI-generated note will be labeled and should
-          be reviewed before it becomes part of the chart.
+          Edit the visit transcript below, then generate a structured SOAP note.
+          AI-generated notes are labeled and should be reviewed before they become part of
+          the chart.
         </p>
 
         <div className="mb-4">

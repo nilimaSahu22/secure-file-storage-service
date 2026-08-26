@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { auth } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { getAnthropicClient, getModel } from "@/lib/ai/client";
 import { getNoteById, addCodingSuggestions } from "@/lib/services/notes";
 
@@ -58,6 +60,17 @@ export async function POST(request: NextRequest) {
   }
 
   await addCodingSuggestions(noteId, parsed.suggestions);
+
+  const session = await auth();
+  await logAudit({
+    actorType: "staff",
+    actorId: session?.user.id,
+    actorName: session?.user.name ?? "Unknown staff",
+    action: "codes.suggested",
+    targetType: "ClinicalNote",
+    targetId: noteId,
+    metadata: { count: parsed.suggestions.length },
+  });
 
   return NextResponse.json({ suggestions: parsed.suggestions });
 }

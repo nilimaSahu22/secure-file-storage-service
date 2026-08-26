@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { SessionProvider } from "@/lib/auth/SessionProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Novare AI — EHR Demo",
-  description: "AI-powered EHR demo, synthetic data only",
+  title: "Meridian — AI-Powered EHR",
+  description: "A unified patient chart with AI-assisted charting, coding, and secure document storage.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -25,7 +24,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
-        <SessionProvider>{children}</SessionProvider>
+        {children}
       </body>
     </html>
   );

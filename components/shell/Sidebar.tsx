@@ -9,15 +9,16 @@ import {
   FileClock,
   TrendingUp,
   ShieldCheck,
+  ScrollText,
+  Workflow,
 } from "lucide-react";
-import { useSession } from "@/lib/auth/SessionProvider";
-import type { SessionRole } from "@/lib/auth/session";
+import type { Role } from "@prisma/client";
 
 interface NavItem {
   href: string;
   label: string;
   icon: typeof Users;
-  roles: SessionRole[];
+  roles: Role[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -27,13 +28,12 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/prior-auth", label: "Prior Auth", icon: FileClock, roles: ["DOCTOR", "NURSE", "ADMIN"] },
   { href: "/dashboard/roi", label: "ROI Dashboard", icon: TrendingUp, roles: ["ADMIN", "DOCTOR"] },
   { href: "/dashboard/admin", label: "Admin", icon: ShieldCheck, roles: ["ADMIN"] },
+  { href: "/dashboard/admin/audit-log", label: "Audit Log", icon: ScrollText, roles: ["ADMIN"] },
+  { href: "/dashboard/admin/workflows", label: "Workflows", icon: Workflow, roles: ["ADMIN"] },
 ];
 
-export function Sidebar() {
+export function Sidebar({ role }: { role: Role }) {
   const pathname = usePathname();
-  const { session } = useSession();
-  const role = session?.role ?? "DOCTOR";
-
   const items = NAV_ITEMS.filter((item) => item.roles.includes(role));
 
   return (

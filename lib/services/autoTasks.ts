@@ -34,7 +34,7 @@ const FALLBACK_TASKS = [
   "Update patient care plan in chart",
 ];
 
-export async function generateFollowUpTasks(note: ClinicalNote): Promise<void> {
+export async function generateFollowUpTasks(note: ClinicalNote): Promise<number> {
   const haystack = `${note.plan} ${note.assessment}`.toLowerCase();
   const matched = new Set<string>();
 
@@ -53,7 +53,7 @@ export async function generateFollowUpTasks(note: ClinicalNote): Promise<void> {
   }
   descriptions = descriptions.slice(0, 3);
 
-  if (descriptions.length === 0) return;
+  if (descriptions.length === 0) return 0;
 
   await createAutoTasks(
     descriptions.map((description) => ({
@@ -62,4 +62,5 @@ export async function generateFollowUpTasks(note: ClinicalNote): Promise<void> {
       description,
     }))
   );
+  return descriptions.length;
 }

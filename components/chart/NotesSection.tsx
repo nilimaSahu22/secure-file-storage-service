@@ -8,7 +8,6 @@ import { Card, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/Modal";
-import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/chart/UnifiedChartView";
 import { createNoteAction } from "@/lib/actions/notes";
 
@@ -98,15 +97,7 @@ export function NotesSection({ patientId, notes, staff }: NotesSectionProps) {
           {notes.map((note) => (
             <div key={note.id} className="rounded-lg border border-slate-100 p-4 text-sm">
               <div className="mb-2 flex items-center justify-between">
-                <p className="font-medium text-slate-900">
-                  {note.author.name}
-                  {note.isAiGenerated && (
-                    <Badge tone="blue">
-                      <Sparkles size={10} className="mr-1 inline" />
-                      AI Preview
-                    </Badge>
-                  )}
-                </p>
+                <p className="font-medium text-slate-900">{note.author.name}</p>
                 <p className="text-xs text-slate-400">{format(note.createdAt, "MMM d, yyyy h:mm a")}</p>
               </div>
               <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">

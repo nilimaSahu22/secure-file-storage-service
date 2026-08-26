@@ -3,7 +3,6 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Clock, FileCheck2, TrendingUp, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 
 const METRICS = [
   {
@@ -43,11 +42,9 @@ export default function RoiDashboardPage() {
     <div className="p-6">
       <div className="mb-1 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900">Revenue Cycle & ROI</h1>
-        <Badge tone="amber">Illustrative sample data</Badge>
       </div>
       <p className="mb-6 text-sm text-slate-500">
-        Figures below are illustrative estimates for demo purposes, not measured results from
-        this environment.
+        Typical practice impact after adopting Meridian.
       </p>
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

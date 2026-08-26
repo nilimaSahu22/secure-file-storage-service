@@ -1,42 +1,21 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
-import { useSession } from "@/lib/auth/SessionProvider";
-import type { SessionRole } from "@/lib/auth/session";
-import { Select } from "@/components/ui/Select";
+import { signOut } from "next-auth/react";
+import type { Role } from "@prisma/client";
 
-const ROLE_OPTIONS: SessionRole[] = ["DOCTOR", "NURSE", "ADMIN"];
-
-export function Topbar() {
-  const { session, setRole, logout } = useSession();
-  const router = useRouter();
-
-  function onLogout() {
-    logout();
-    router.push("/login");
-  }
-
+export function Topbar({ name, role }: { name: string; role: Role }) {
   return (
     <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
       <div className="text-sm text-slate-500">
-        Signed in as <span className="font-medium text-slate-900">{session?.name}</span>
+        Signed in as <span className="font-medium text-slate-900">{name}</span>
       </div>
       <div className="flex items-center gap-4">
-        <Select
-          id="role-switcher"
-          value={session?.role ?? "DOCTOR"}
-          onChange={(e) => setRole(e.target.value as SessionRole)}
-          className="w-36"
-        >
-          {ROLE_OPTIONS.map((role) => (
-            <option key={role} value={role}>
-              {role.charAt(0) + role.slice(1).toLowerCase()}
-            </option>
-          ))}
-        </Select>
+        <span className="rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700">
+          {role.charAt(0) + role.slice(1).toLowerCase()}
+        </span>
         <button
-          onClick={onLogout}
+          onClick={() => signOut({ redirectTo: "/login" })}
           className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-900"
         >
           <LogOut size={16} />

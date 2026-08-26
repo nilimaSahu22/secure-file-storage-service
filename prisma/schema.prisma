@@ -45,28 +45,46 @@ enum AlertSeverity {
   HIGH
 }
 
+enum ChatActorType {
+  DOCTOR
+  PATIENT
+}
+
+enum Department {
+  RADIOLOGY
+  OPD
+  CARDIOLOGY
+  EMERGENCY
+}
+
 model StaffUser {
-  id         String  @id @default(uuid())
-  name       String
-  role       Role
-  department String?
+  id           String      @id @default(uuid())
+  name         String
+  email        String      @unique
+  passwordHash String
+  role         Role
+  department   Department?
 
   notes         ClinicalNote[]
   appointments  Appointment[]
   tasksAssigned Task[]
   referralsFrom Referral[]     @relation("ReferralFrom")
   referralsTo   Referral[]     @relation("ReferralTo")
+  uploadedFiles MedicalFile[]
+  chatMessages  ChatMessage[]
 }
 
 model Patient {
-  id           String   @id @default(uuid())
-  firstName    String
-  lastName     String
-  dateOfBirth  DateTime
-  gender       String
-  contactPhone String?
-  contactEmail String?
-  createdAt    DateTime @default(now())
+  id                 String   @id @default(uuid())
+  firstName          String
+  lastName           String
+  dateOfBirth        DateTime
+  gender             String
+  contactPhone       String?
+  contactEmail       String?
+  portalEmail        String?  @unique
+  portalPasswordHash String?
+  createdAt          DateTime @default(now())
 
   medications    Medication[]
   allergies      Allergy[]
@@ -80,6 +98,8 @@ model Patient {
   referrals      Referral[]
   chartSummaries ChartSummary[]
   alerts         ClinicalAlert[]
+  files          MedicalFile[]
+  chatMessages   ChatMessage[]
 }
 
 model Medication {
@@ -255,4 +275,77 @@ model ClinicalAlert {
   triggeredAt DateTime      @default(now())
 
   @@index([patientId])
+}
+
+model MedicalFile {
+  id                String      @id @default(uuid())
+  patientId         String
+  patient           Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  uploadedByStaffId String?
+  uploadedByStaff   StaffUser?  @relation(fields: [uploadedByStaffId], references: [id])
+  uploadedByPatient Boolean     @default(false)
+  fileName          String
+  storageKey        String      @unique
+  mimeType          String
+  sizeBytes         Int
+  category          String
+  department        Department?
+  version           Int         @default(1)
+  previousVersionId String?
+  extractedText     String?     @db.Text
+  createdAt         DateTime    @default(now())
+
+  @@index([patientId])
+}
+
+model ChatMessage {
+  id           String        @id @default(uuid())
+  patientId    String
+  patient      Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  actorType    ChatActorType
+  staffId      String?
+  staff        StaffUser?    @relation(fields: [staffId], references: [id])
+  role         String
+  content      String        @db.Text
+  citedFileIds String[]      @default([])
+  createdAt    DateTime      @default(now())
+
+  @@index([patientId, actorType])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorType  String
+  actorId    String?
+  actorName  String
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+}
+
+model DepartmentWorkflow {
+  id             String     @id @default(uuid())
+  department     Department @unique
+  intakeSteps    Json
+  triageRules    Json
+  escalationPath Json
+  updatedAt      DateTime   @updatedAt
+}
+
+model Inquiry {
+  id                  String   @id @default(uuid())
+  fullName            String
+  workEmail           String
+  organizationName    String
+  role                String
+  patientVolumePerDay String?
+  problemStatement    String   @db.Text
+  phone               String?
+  consentGiven        Boolean
+  createdAt           DateTime @default(now())
 }

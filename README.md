@@ -42,6 +42,12 @@ npm run dev             # http://localhost:3000
 | `ANTHROPIC_API_KEY` | Anthropic API key, used server-side only |
 | `ANTHROPIC_MODEL` | Model ID for all three AI features (default `claude-haiku-4-5-20251001`) |
 | `ADMIN_RESET_TOKEN` | Shared secret required to call `POST /api/admin/reset-demo` from outside the app (see below) |
+| `AUTH_SECRET` | NextAuth v5 JWT signing secret (generate with `openssl rand -base64 32` or similar) |
+| `AUTH_URL` | Base URL NextAuth uses for callbacks (`http://localhost:3000` in dev) |
+| `AWS_ACCESS_KEY_ID` | AWS access key with `s3:PutObject`/`s3:GetObject` on the target bucket |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key |
+| `AWS_REGION` | AWS region the S3 bucket lives in (e.g. `us-east-1`) |
+| `AWS_S3_BUCKET` | S3 bucket used for Secure File Storage; needs CORS allowing `PUT`/`POST` from the app's origin |
 
 ## Resetting demo data before a client meeting
 
@@ -62,13 +68,25 @@ identical either way.
 
 ## Architecture notes
 
-### Cosmetic authentication
+### Authentication
 
-Register/Login on the landing page do not validate against anything real — submitting
-either sets a mock session (`{name, role}`) in `localStorage` and routes into the app.
-There is no password hashing and no persisted account, even though a real database
-exists for clinical data. The role switcher in the dashboard topbar lets you view the
-app as Doctor, Nurse, or Admin at any time.
+Real credential-checked login (NextAuth v5 / Auth.js, Credentials provider, JWT
+sessions, bcrypt-hashed passwords, no cosmetic session). `middleware.ts` gates
+`/dashboard/*` to staff sessions and `/portal/*` to patient sessions. Registering on
+`/register` creates a real `StaffUser` row with Doctor access.
+
+**Demo credentials** (seeded by `prisma/fixtures.ts` / "Reset Demo Data" — password is
+the same for every seeded account):
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Doctor | `elena.ramirez@meridian.health` | `Demo1234!` |
+| Doctor | `marcus.chen@meridian.health` | `Demo1234!` |
+| Nurse | `aisha.patel@meridian.health` | `Demo1234!` |
+| Admin | `sam.reyes@meridian.health` | `Demo1234!` |
+| Patient portal | `harold.bramwell@patientmail.example` | `Demo1234!` |
+
+These credentials are intentionally not surfaced anywhere in the app UI.
 
 ### Why a real database
 
@@ -111,36 +129,88 @@ drug-interaction database.
 All figures on `/dashboard/roi` are static, clearly labeled illustrative estimates — not
 computed from this environment's data.
 
+### Secure File Storage
+
+Real AWS S3 (the user's own bucket — not a mock), via presigned POST uploads
+(`lib/services/files.ts`, `app/api/files/*`): the browser uploads directly to S3, the
+server never proxies file bytes. Re-uploading the same category for a patient creates a
+new versioned `MedicalFile` row (`previousVersionId`/`version`) rather than overwriting.
+PDF uploads are text-extracted server-side (`pdf-parse`) into `extractedText`, which feeds
+the grounded AI chat below. Department-tagged files are only visible to staff in that
+department (or Admins); untagged files are visible org-wide. Downloads go through a
+short-lived presigned GET URL, never a public bucket path.
+
+### Grounded AI Chat (chart + patient portal)
+
+`lib/ai/groundedChat.ts` + `POST /api/chart-chat` — answers only from a patient's uploaded
+document text, injected directly into the system prompt (no vector search at this scale).
+It's instructed to decline plainly rather than fall back on general medical knowledge when
+the documents don't cover a question, and to cite source filenames, which are matched back
+to `MedicalFile` rows for the citation chips shown in the UI. Doctor-side and patient-side
+conversations about the same patient are separate `ChatMessage` threads (`actorType`), each
+only visible to their own side.
+
+### Patient Portal
+
+`/portal/*` — a separate, deliberately simpler surface for patients: their own upcoming
+appointments, self-service document upload (same S3 pipeline as the EMR), and grounded
+chat about their own documents. Its own login (`/portal/login`), and its `ChatMessage`
+thread never overlaps with the doctor-side conversation about the same patient.
+
+### Departmental Workflows
+
+`/dashboard/admin/workflows` lets Admins edit each department's intake steps, simple
+"if X → priority Y" triage rules, and escalation path (`DepartmentWorkflow`, JSON columns —
+intentionally not a full workflow engine). The same data drives the department preview on
+the public landing page, so an edit here is visible there immediately.
+
+### Audit Log
+
+`lib/audit.ts` — a `logAudit()` helper called from every tracked mutation (login
+success/failure, note created, file uploaded, codes suggested, prior auth submitted).
+Writes never throw — a failed audit write is logged to the server console rather than
+breaking the action it's recording. Viewable, with filters, at
+`/dashboard/admin/audit-log` (Admin only).
+
 ## Project structure
 
 ```
 app/
-  api/                      chart-summary, generate-note, suggest-codes, admin/reset-demo
-  dashboard/                patient list, patient chart, tasks, appointments, ROI, admin
-  login/ register/          cosmetic auth
+  api/                      chart-summary, generate-note, suggest-codes, chart-chat,
+                             files (+confirm, [id]/download), inquiries, admin/reset-demo, auth
+  dashboard/                patient list, patient chart, tasks, appointments, ROI,
+                             admin (reset, audit-log, workflows)
+  portal/                   patient-facing surface — (app)/ is the auth-guarded group,
+                             login/ is not
+  login/ register/          real NextAuth credentials login/registration
 lib/
   actions/                  Server Actions (mutations)
   services/                 Prisma-backed data accessors — the layer every route/page reads through
-  ai/                       Anthropic client + chart-context builder
+                             (files.ts, workflows.ts, portal.ts, auditLog.ts, inquiries.ts, …)
+  ai/                       Anthropic client, chart-context builder, groundedChat.ts
   clinical/rules.ts         drug-allergy conflict + vital-range rules
-  auth/                     cosmetic session (localStorage + React context)
+  auth.ts                   NextAuth v5 config (Credentials provider, JWT sessions)
+  audit.ts                  logAudit() — write side of the Audit Log
+middleware.ts                staff/patient route gating
 prisma/
   schema.prisma
   fixtures.ts               seed data — also what "Reset Demo Data" re-runs
   seed.ts                   thin runner for `npm run db:seed`
 components/
   ui/                       shared primitives (Button, Input, Card, Badge, Modal, Select)
-  chart/                    Unified Chart View and its sections
-  dashboard/                shell, patient list, tasks, appointments
+  landing/                  public landing page sections
+  chart/                    Unified Chart View and its sections (incl. FilesSection, AiChatPanel)
+  portal/                   patient portal shell
+  dashboard/                shell, patient list, tasks, appointments, WorkflowEditor
 ```
 
 ## Known limitations / scope cuts
 
 Deliberately trimmed to keep the build focused on the sales-demo narrative:
 
-- **Patient Portal** — cut entirely. Wrong audience for a clinician/admin-facing pitch.
+- **Patient Portal** is read-mostly: appointments, documents, and grounded chat. No
+  self-service booking/rescheduling.
 - **Referrals** are a minimal create-and-list flow (no accept/complete workflow beyond
   status display).
 - **Appointment scheduling** is a list-based book/reschedule/cancel flow, not a
   day/week calendar widget.
-- **No real auth** — see [Cosmetic authentication](#cosmetic-authentication) above.

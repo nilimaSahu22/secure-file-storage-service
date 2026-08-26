@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { AlertTriangle, Phone, Mail, Calendar } from "lucide-react";
-import type { StaffUser } from "@prisma/client";
+import type { Department, StaffUser } from "@prisma/client";
 import type { PatientWithChart } from "@/lib/services/patients";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -12,7 +12,8 @@ import { NotesSection } from "@/components/chart/NotesSection";
 import { TasksSection } from "@/components/chart/TasksSection";
 import { PriorAuthSection } from "@/components/chart/PriorAuthSection";
 import { ReferralsSection } from "@/components/chart/ReferralsSection";
-import { ChatAssistant } from "@/components/chart/ChatAssistant";
+import { FilesSection } from "@/components/chart/FilesSection";
+import { AiChatPanel } from "@/components/chart/AiChatPanel";
 
 const severityTone = { LOW: "neutral", MEDIUM: "amber", HIGH: "red" } as const;
 const statusTone = {
@@ -25,9 +26,10 @@ const statusTone = {
 interface UnifiedChartViewProps {
   patient: PatientWithChart;
   staff: StaffUser[];
+  currentStaffDepartment?: Department | null;
 }
 
-export function UnifiedChartView({ patient, staff }: UnifiedChartViewProps) {
+export function UnifiedChartView({ patient, staff, currentStaffDepartment }: UnifiedChartViewProps) {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 sm:flex-row sm:items-start sm:justify-between">
@@ -67,7 +69,15 @@ export function UnifiedChartView({ patient, staff }: UnifiedChartViewProps) {
             )}
           </div>
         </div>
-        <ChartActions patientId={patient.id} staff={staff} />
+        <div className="flex flex-col items-end gap-3">
+          <ChartActions patientId={patient.id} staff={staff} />
+          <AiChatPanel
+            patientId={patient.id}
+            patientName={`${patient.firstName} ${patient.lastName}`}
+            initialMessages={patient.chatMessages}
+            files={patient.files}
+          />
+        </div>
       </div>
 
       {patient.alerts.length > 0 && (
@@ -88,10 +98,7 @@ export function UnifiedChartView({ patient, staff }: UnifiedChartViewProps) {
 
       {patient.chartSummaries.length > 0 && (
         <Card className="border-blue-200 bg-blue-50">
-          <CardTitle className="mb-2 flex items-center gap-1.5 text-blue-900">
-            AI Chart Summary
-            <Badge tone="blue">AI Preview</Badge>
-          </CardTitle>
+          <CardTitle className="mb-2 flex items-center gap-1.5 text-blue-900">AI Chart Summary</CardTitle>
           <p className="text-sm text-slate-700">{patient.chartSummaries[0].summary}</p>
           <p className="mt-2 text-xs text-slate-400">
             Generated {format(patient.chartSummaries[0].generatedAt, "MMM d, yyyy h:mm a")}
@@ -156,14 +163,14 @@ export function UnifiedChartView({ patient, staff }: UnifiedChartViewProps) {
 
       <NotesSection patientId={patient.id} notes={patient.notes} staff={staff} />
 
+      <FilesSection patientId={patient.id} files={patient.files} defaultDepartment={currentStaffDepartment} />
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <TasksSection patientId={patient.id} tasks={patient.tasks} staff={staff} />
         <PriorAuthSection patientId={patient.id} priorAuths={patient.priorAuths} />
       </div>
 
       <ReferralsSection patientId={patient.id} referrals={patient.referrals} staff={staff} />
-
-      <ChatAssistant patientId={patient.id} patientName={`${patient.firstName} ${patient.lastName}`} />
     </div>
   );
 }
