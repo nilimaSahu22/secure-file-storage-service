@@ -110,8 +110,10 @@ export function AiChatPanel({
 
   // Mobile-first: base height is the smallest (mobile) tier, then each larger
   // breakpoint only adds an override — avoids relying on max-* specificity ordering.
+  // Sizing/position (sticky, width, overflow-clip for the slide animation) is owned
+  // by ChartShell's wrapper now, not here — this only sets this panel's own height.
   const wrapperClass = isSidebar
-    ? "flex w-full flex-col h-[400px] min-[521px]:h-[460px] min-[1201px]:sticky min-[1201px]:top-6 min-[1201px]:h-[calc(100vh-3rem)] min-[1201px]:max-h-[700px] min-[1201px]:w-[380px] min-[1201px]:shrink-0"
+    ? "flex w-full flex-col h-[400px] min-[521px]:h-[460px] min-[1201px]:h-[calc(100vh-3rem)] min-[1201px]:max-h-[700px]"
     : isPage
       ? "flex w-full flex-col gap-2"
       : "flex w-full flex-col items-end gap-2 sm:w-80";
