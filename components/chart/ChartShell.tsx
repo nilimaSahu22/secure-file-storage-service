@@ -20,35 +20,17 @@ export function ChartShell({ patientId, patientName, initialMessages, files, chi
     <div className="flex flex-col gap-6 min-[1201px]:flex-row min-[1201px]:items-start">
       <div className="flex min-w-0 flex-1 flex-col gap-6">{children}</div>
 
-      {/* Backdrop — only for the mobile/tablet bottom sheet; the desktop dock has no modal overlay. */}
+      {/*
+        Simple conditional mount, not "always mounted + animate geometry" — that
+        approach left an invisible-but-present fixed box behind when "closed",
+        which silently swallowed clicks meant for the reopen button underneath it.
+        Below 1201px this renders as a small floating popup near the bottom-right
+        corner (Intercom/Crisp-style widget), not a full-width/full-height sheet.
+        At 1201px+ it's the sticky right-hand dock, unchanged.
+      */}
       {aiOpen && (
         <div
-          onClick={() => setAiOpen(false)}
-          aria-hidden="true"
-          className="fixed inset-0 z-40 bg-slate-900/40 min-[1201px]:hidden"
-        />
-      )}
-
-      {/*
-        Below 1201px: a fixed bottom sheet that slides up from the screen edge —
-        avoids burying "Ask AI" at the end of a long scroll on mobile/tablet.
-        At 1201px+: the sticky right-hand dock, unchanged — slides in from the right
-        and collapses width so the left column reflows into the freed space.
-        Stays mounted at all times so the transform transition has a "from" state
-        to animate out of; purely structural (no bg/border/rounding of its own —
-        AiChatPanel's own card supplies that) to avoid a double-card look.
-      */}
-      <div
-        className={`fixed inset-x-0 bottom-0 z-50 overflow-hidden min-[1201px]:static min-[1201px]:inset-auto min-[1201px]:z-auto min-[1201px]:sticky min-[1201px]:top-6 min-[1201px]:shrink-0 transition-[width] duration-300 ease-in-out ${
-          aiOpen ? "min-[1201px]:w-[380px]" : "min-[1201px]:w-0"
-        }`}
-      >
-        <div
-          className={`w-full transition-transform duration-300 ease-in-out min-[1201px]:w-[380px] ${
-            aiOpen
-              ? "translate-y-0 min-[1201px]:translate-x-0"
-              : "translate-y-full min-[1201px]:translate-y-0 min-[1201px]:translate-x-full"
-          }`}
+          className="animate-[pop-in_180ms_ease-out] fixed bottom-6 right-6 z-50 w-[calc(100vw-3rem)] max-w-[360px] min-[1201px]:sticky min-[1201px]:top-6 min-[1201px]:right-auto min-[1201px]:bottom-auto min-[1201px]:z-auto min-[1201px]:w-[380px] min-[1201px]:max-w-none min-[1201px]:shrink-0"
         >
           <AiChatPanel
             patientId={patientId}
@@ -59,7 +41,7 @@ export function ChartShell({ patientId, patientName, initialMessages, files, chi
             onClose={() => setAiOpen(false)}
           />
         </div>
-      </div>
+      )}
 
       {!aiOpen && (
         <button
