@@ -11,9 +11,10 @@ interface AiChatPanelProps {
   patientName: string;
   initialMessages: PrismaChatMessage[];
   files: Pick<MedicalFile, "id" | "fileName">[];
-  /** "widget" (default): collapsible, triggered by a button — used inline in the EMR.
-   *  "page": always expanded, fills its container — used as a standalone portal page. */
-  variant?: "widget" | "page";
+  /** "widget": collapsible, triggered by a button — legacy inline trigger.
+   *  "page": always expanded, fills its container — used as a standalone portal page.
+   *  "sidebar": always expanded, persistent split-view panel — used on the EMR chart. */
+  variant?: "widget" | "page" | "sidebar";
 }
 
 interface DisplayMessage {
@@ -24,7 +25,7 @@ interface DisplayMessage {
 }
 
 export function AiChatPanel({ patientId, patientName, initialMessages, files, variant = "widget" }: AiChatPanelProps) {
-  const [open, setOpen] = useState(variant === "page");
+  const [open, setOpen] = useState(variant !== "widget");
   const [messages, setMessages] = useState<DisplayMessage[]>(() =>
     initialMessages.map((m) => ({
       id: m.id,
@@ -93,11 +94,24 @@ export function AiChatPanel({ patientId, patientName, initialMessages, files, va
     else speech.start();
   }
 
+  const isSidebar = variant === "sidebar";
   const isPage = variant === "page";
 
+  const wrapperClass = isSidebar
+    ? "flex h-full w-full flex-col min-[901px]:w-[380px] min-[901px]:shrink-0"
+    : isPage
+      ? "flex w-full flex-col gap-2"
+      : "flex w-full flex-col items-end gap-2 sm:w-80";
+
+  const cardHeightClass = isSidebar
+    ? "h-full min-h-[420px] max-[520px]:min-h-[320px]"
+    : isPage
+      ? "h-[70vh]"
+      : "h-[420px]";
+
   return (
-    <div className={isPage ? "flex w-full flex-col gap-2" : "flex w-full flex-col items-end gap-2 sm:w-80"}>
-      {!isPage && (
+    <div className={wrapperClass}>
+      {variant === "widget" && (
         <Button onClick={() => setOpen((o) => !o)} className="w-full sm:w-auto">
           <MessageCircle size={14} />
           Ask AI
@@ -107,17 +121,24 @@ export function AiChatPanel({ patientId, patientName, initialMessages, files, va
 
       {open && (
         <div
-          className={`flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ${
-            isPage ? "h-[70vh]" : "h-[420px]"
-          }`}
+          className={`flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ${cardHeightClass}`}
         >
-          <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
-            <p className="text-sm font-semibold text-slate-900">Ask about {patientName}&apos;s documents</p>
-            <p className="mt-0.5 text-[11px] text-slate-500">
-              Answers only from documents uploaded to this chart. It will say so plainly if a
-              document doesn&apos;t cover your question.
-            </p>
-          </div>
+          {isSidebar ? (
+            <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                <span className="text-blue-600">✦</span> Ask AI
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-500">this chart&apos;s documents only</p>
+            </div>
+          ) : (
+            <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
+              <p className="text-sm font-semibold text-slate-900">Ask about {patientName}&apos;s documents</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Answers only from documents uploaded to this chart. It will say so plainly if a
+                document doesn&apos;t cover your question.
+              </p>
+            </div>
+          )}
 
           <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
             {messages.length === 0 && (
@@ -199,9 +220,20 @@ export function AiChatPanel({ patientId, patientName, initialMessages, files, va
                 <span className="relative">{speech.listening ? <MicOff size={15} /> : <Mic size={15} />}</span>
               </button>
             )}
-            <Button type="submit" size="sm" disabled={sending || !input.trim()}>
-              <Send size={14} />
-            </Button>
+            {isSidebar ? (
+              <button
+                type="submit"
+                disabled={sending || !input.trim()}
+                aria-label="Send"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              >
+                <Send size={14} />
+              </button>
+            ) : (
+              <Button type="submit" size="sm" disabled={sending || !input.trim()}>
+                <Send size={14} />
+              </Button>
+            )}
           </form>
         </div>
       )}

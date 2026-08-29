@@ -37,16 +37,18 @@ export function Sidebar({ role }: { role: Role }) {
   const items = NAV_ITEMS.filter((item) => item.roles.includes(role));
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white p-4 sm:flex">
-      <div className="mb-6 px-2 text-lg font-semibold text-slate-900">Meridian</div>
-      <nav className="flex flex-col gap-1">
+    <aside className="flex w-full shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-4 py-2 min-[901px]:h-screen min-[901px]:w-60 min-[901px]:flex-col min-[901px]:items-stretch min-[901px]:gap-0 min-[901px]:border-b-0 min-[901px]:border-r min-[901px]:p-4">
+      <div className="shrink-0 text-lg font-semibold text-slate-900 min-[901px]:mb-6 min-[901px]:px-2">
+        Meridian
+      </div>
+      <nav className="flex gap-1 overflow-x-auto min-[901px]:flex-col min-[901px]:overflow-visible">
         {items.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
           return (
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"
               }`}
             >

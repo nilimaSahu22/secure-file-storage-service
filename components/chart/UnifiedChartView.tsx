@@ -31,70 +31,74 @@ interface UnifiedChartViewProps {
 
 export function UnifiedChartView({ patient, staff, currentStaffDepartment }: UnifiedChartViewProps) {
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-100 text-lg font-semibold text-blue-700">
-            {getInitials(patient.firstName, patient.lastName)}
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-slate-900">
-              {patient.firstName} {patient.lastName}
-            </h1>
-            <p className="text-sm text-slate-500">
-              {getAge(patient.dateOfBirth)} yrs · {patient.gender} · DOB{" "}
-              {format(patient.dateOfBirth, "MMM d, yyyy")}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
-              {patient.contactPhone && (
-                <span className="flex items-center gap-1">
-                  <Phone size={12} /> {patient.contactPhone}
-                </span>
-              )}
-              {patient.contactEmail && (
-                <span className="flex items-center gap-1">
-                  <Mail size={12} /> {patient.contactEmail}
-                </span>
-              )}
+    <div className="flex flex-col gap-6 p-6 max-[520px]:p-4">
+      <div className="grid grid-cols-1 gap-6 min-[901px]:grid-cols-[1fr_380px] min-[901px]:items-stretch">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 max-[520px]:p-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-100 text-lg font-semibold text-blue-700">
+                {getInitials(patient.firstName, patient.lastName)}
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold text-slate-900">
+                  {patient.firstName} {patient.lastName}
+                </h1>
+                <p className="text-sm text-slate-500">
+                  {getAge(patient.dateOfBirth)} yrs · {patient.gender} · DOB{" "}
+                  {format(patient.dateOfBirth, "MMM d, yyyy")}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                  {patient.contactPhone && (
+                    <span className="flex items-center gap-1">
+                      <Phone size={12} /> {patient.contactPhone}
+                    </span>
+                  )}
+                  {patient.contactEmail && (
+                    <span className="flex items-center gap-1">
+                      <Mail size={12} /> {patient.contactEmail}
+                    </span>
+                  )}
+                </div>
+                {patient.allergies.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {patient.allergies.map((a) => (
+                      <Badge key={a.id} tone="red">
+                        <AlertTriangle size={11} className="mr-1 inline" />
+                        {a.allergen}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            {patient.allergies.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {patient.allergies.map((a) => (
-                  <Badge key={a.id} tone="red">
-                    <AlertTriangle size={11} className="mr-1 inline" />
-                    {a.allergen}
-                  </Badge>
+            <ChartActions patientId={patient.id} staff={staff} />
+          </div>
+
+          {patient.alerts.length > 0 && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardTitle className="mb-2 flex items-center gap-1.5 text-amber-900">
+                <AlertTriangle size={14} /> Clinical Alerts
+              </CardTitle>
+              <div className="flex flex-col gap-2">
+                {patient.alerts.map((alert) => (
+                  <div key={alert.id} className="flex items-start gap-2 text-sm">
+                    <Badge tone={severityTone[alert.severity]}>{alert.severity}</Badge>
+                    <p className="text-slate-700">{alert.message}</p>
+                  </div>
                 ))}
               </div>
-            )}
-          </div>
+            </Card>
+          )}
         </div>
-        <div className="flex flex-col items-end gap-3">
-          <ChartActions patientId={patient.id} staff={staff} />
-          <AiChatPanel
-            patientId={patient.id}
-            patientName={`${patient.firstName} ${patient.lastName}`}
-            initialMessages={patient.chatMessages}
-            files={patient.files}
-          />
-        </div>
-      </div>
 
-      {patient.alerts.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardTitle className="mb-2 flex items-center gap-1.5 text-amber-900">
-            <AlertTriangle size={14} /> Clinical Alerts
-          </CardTitle>
-          <div className="flex flex-col gap-2">
-            {patient.alerts.map((alert) => (
-              <div key={alert.id} className="flex items-start gap-2 text-sm">
-                <Badge tone={severityTone[alert.severity]}>{alert.severity}</Badge>
-                <p className="text-slate-700">{alert.message}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+        <AiChatPanel
+          patientId={patient.id}
+          patientName={`${patient.firstName} ${patient.lastName}`}
+          initialMessages={patient.chatMessages}
+          files={patient.files}
+          variant="sidebar"
+        />
+      </div>
 
       {patient.chartSummaries.length > 0 && (
         <Card className="border-blue-200 bg-blue-50">

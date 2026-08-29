@@ -32,12 +32,16 @@ export function ChartActions({ patientId }: ChartActionsProps) {
   }
 
   return (
-    <div className="flex shrink-0 gap-2">
-      <Button variant="outline" onClick={onSummarize} disabled={summarizing}>
+    <div className="flex shrink-0 gap-2 max-[520px]:w-full max-[520px]:flex-col">
+      <Button variant="outline" onClick={onSummarize} disabled={summarizing} className="max-[520px]:w-full">
         <Sparkles size={14} />
         {summarizing ? "Summarizing…" : "Summarize Chart"}
       </Button>
-      <Button variant="outline" onClick={() => router.push(`/dashboard/patients/${patientId}/visit`)}>
+      <Button
+        variant="outline"
+        onClick={() => router.push(`/dashboard/patients/${patientId}/visit`)}
+        className="max-[520px]:w-full"
+      >
         <Mic size={14} />
         Start Visit
       </Button>

@@ -11,7 +11,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col min-[901px]:flex-row">
       <Sidebar role={session.user.role} />
       <div className="flex flex-1 flex-col">
         <Topbar name={session.user.name ?? "Staff"} role={session.user.role} />
