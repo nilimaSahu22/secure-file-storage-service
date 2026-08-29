@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { loginAction, type LoginState } from "./actions";
 
 const initialState: LoginState = {};
@@ -28,10 +29,9 @@ export default function LoginPage() {
             required
             placeholder="you@example.com"
           />
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             label="Password"
             required
             placeholder="••••••••"

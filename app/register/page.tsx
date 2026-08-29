@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { registerAction, type RegisterState } from "./actions";
 
 const initialState: RegisterState = {};
@@ -36,10 +37,9 @@ export default function RegisterPage() {
             required
             placeholder="you@example.com"
           />
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             label="Password"
             required
             minLength={8}
