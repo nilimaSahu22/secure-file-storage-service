@@ -17,6 +17,7 @@ import { FilesSection } from "@/components/chart/FilesSection";
 
 const severityTone = { LOW: "neutral", MEDIUM: "amber", HIGH: "red" } as const;
 const statusTone = {
+  REQUESTED: "amber",
   SCHEDULED: "blue",
   COMPLETED: "green",
   CANCELLED: "neutral",

@@ -15,6 +15,8 @@ import {
   bookAppointmentAction,
   rescheduleAppointmentAction,
   cancelAppointmentAction,
+  confirmAppointmentAction,
+  declineAppointmentAction,
 } from "@/lib/actions/appointments";
 
 type AppointmentRow = Appointment & { patient: Patient; provider: StaffUser };
@@ -26,6 +28,7 @@ interface AppointmentsClientProps {
 }
 
 const STATUS_TONE = {
+  REQUESTED: "amber",
   SCHEDULED: "blue",
   COMPLETED: "green",
   CANCELLED: "neutral",
@@ -78,6 +81,14 @@ export function AppointmentsClient({ appointments, patients, providers }: Appoin
     await cancelAppointmentAction(id);
   }
 
+  async function onConfirm(id: string) {
+    await confirmAppointmentAction(id);
+  }
+
+  async function onDecline(id: string) {
+    await declineAppointmentAction(id);
+  }
+
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -111,6 +122,16 @@ export function AppointmentsClient({ appointments, patients, providers }: Appoin
                     <p className="text-xs text-slate-400">{format(a.scheduledAt, "h:mm a")}</p>
                   </div>
                   <Badge tone={STATUS_TONE[a.status]}>{a.status.replace("_", " ")}</Badge>
+                  {a.status === "REQUESTED" && (
+                    <div className="flex gap-1">
+                      <Button size="sm" onClick={() => onConfirm(a.id)}>
+                        Confirm
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => onDecline(a.id)}>
+                        Decline
+                      </Button>
+                    </div>
+                  )}
                   {a.status === "SCHEDULED" && (
                     <div className="flex gap-1">
                       <Button

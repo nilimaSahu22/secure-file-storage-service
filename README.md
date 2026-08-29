@@ -167,7 +167,8 @@ the public landing page, so an edit here is visible there immediately.
 ### Audit Log
 
 `lib/audit.ts` — a `logAudit()` helper called from every tracked mutation (login
-success/failure, note created, file uploaded, codes suggested, prior auth submitted).
+success/failure, note created, file uploaded, codes suggested, prior auth submitted,
+appointment requested/confirmed/declined).
 Writes never throw — a failed audit write is logged to the server console rather than
 breaking the action it's recording. Viewable, with filters, at
 `/dashboard/admin/audit-log` (Admin only).
@@ -208,8 +209,10 @@ components/
 
 Deliberately trimmed to keep the build focused on the sales-demo narrative:
 
-- **Patient Portal** is read-mostly: appointments, documents, and grounded chat. No
-  self-service booking/rescheduling.
+- **Patient Portal** is read-mostly: documents and grounded chat. Appointments are
+  request-only — a patient submits a preferred date/time and provider, which lands as
+  a `REQUESTED` appointment that staff confirms or declines from the dashboard; there's
+  no direct self-service booking or patient-side rescheduling/cancellation.
 - **Referrals** are a minimal create-and-list flow (no accept/complete workflow beyond
   status display).
 - **Appointment scheduling** is a list-based book/reschedule/cancel flow, not a

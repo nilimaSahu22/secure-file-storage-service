@@ -14,6 +14,7 @@ enum Role {
 }
 
 enum AppointmentStatus {
+  REQUESTED
   SCHEDULED
   COMPLETED
   CANCELLED

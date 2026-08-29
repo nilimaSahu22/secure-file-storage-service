@@ -19,6 +19,18 @@ export function bookAppointment(input: BookAppointmentInput) {
   return prisma.appointment.create({ data: input });
 }
 
+export interface RequestAppointmentInput {
+  patientId: string;
+  providerId: string;
+  scheduledAt: Date;
+  reason?: string;
+}
+
+// Patient-initiated — lands as REQUESTED, not SCHEDULED, until staff confirms it.
+export function requestAppointment(input: RequestAppointmentInput) {
+  return prisma.appointment.create({ data: { ...input, status: AppointmentStatus.REQUESTED } });
+}
+
 export function rescheduleAppointment(id: string, scheduledAt: Date) {
   return prisma.appointment.update({ where: { id }, data: { scheduledAt } });
 }
