@@ -108,21 +108,22 @@ export function AiChatPanel({
   const isSidebar = variant === "sidebar";
   const isPage = variant === "page";
 
-  // Mobile-first: base height is the smallest (mobile) tier, then each larger
-  // breakpoint only adds an override — avoids relying on max-* specificity ordering.
-  // Sizing/position (sticky, width, overflow-clip for the slide animation) is owned
-  // by ChartShell's wrapper now, not here — this only sets this panel's own height.
+  // isSidebar owns its own explicit height at every breakpoint (never a plain h-full)
+  // because ChartShell's wrapper divs are pure shrink-wrap containers around it —
+  // if both sides depended on each other's height ("fill my parent" / "fit my child")
+  // that's circular and collapses to nothing. Below 1201px it's a bottom sheet
+  // (viewport-relative height); at 1201px+ it's the sticky right-hand dock.
   const wrapperClass = isSidebar
-    ? "flex w-full flex-col h-[400px] min-[521px]:h-[460px] min-[1201px]:h-[calc(100vh-3rem)] min-[1201px]:max-h-[700px]"
+    ? "flex h-[80vh] w-full flex-col min-[1201px]:h-[calc(100vh-3rem)] min-[1201px]:max-h-[700px]"
     : isPage
       ? "flex w-full flex-col gap-2"
       : "flex w-full flex-col items-end gap-2 sm:w-80";
 
   const cardHeightClass = isSidebar
-    ? "h-full"
+    ? "h-full rounded-t-2xl min-[1201px]:rounded-xl"
     : isPage
-      ? "h-[70vh]"
-      : "h-[420px]";
+      ? "h-[70vh] rounded-xl"
+      : "h-[420px] rounded-xl";
 
   return (
     <div className={wrapperClass}>
@@ -136,7 +137,7 @@ export function AiChatPanel({
 
       {open && (
         <div
-          className={`flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ${cardHeightClass}`}
+          className={`flex w-full flex-col overflow-hidden border border-slate-200 bg-white shadow-lg ${cardHeightClass}`}
         >
           {isSidebar ? (
             <div className="relative border-b border-slate-100 bg-slate-50 px-4 py-3">

@@ -20,22 +20,34 @@ export function ChartShell({ patientId, patientName, initialMessages, files, chi
     <div className="flex flex-col gap-6 min-[1201px]:flex-row min-[1201px]:items-start">
       <div className="flex min-w-0 flex-1 flex-col gap-6">{children}</div>
 
+      {/* Backdrop — only for the mobile/tablet bottom sheet; the desktop dock has no modal overlay. */}
+      {aiOpen && (
+        <div
+          onClick={() => setAiOpen(false)}
+          aria-hidden="true"
+          className="fixed inset-0 z-40 bg-slate-900/40 min-[1201px]:hidden"
+        />
+      )}
+
       {/*
-        Stays mounted at all times so the open/close transition can actually animate
-        (an unmounted element has no "from" state to transition out of). The outer
-        div collapses width (with overflow-hidden) so the left column reflows into
-        the freed space; the inner div slides via translate-x so it visually enters
-        and exits from the right edge, matching a Cursor/Copilot-style dock panel.
-        Below 1201px there's no room to dock a sidebar, so it just shows/hides.
+        Below 1201px: a fixed bottom sheet that slides up from the screen edge —
+        avoids burying "Ask AI" at the end of a long scroll on mobile/tablet.
+        At 1201px+: the sticky right-hand dock, unchanged — slides in from the right
+        and collapses width so the left column reflows into the freed space.
+        Stays mounted at all times so the transform transition has a "from" state
+        to animate out of; purely structural (no bg/border/rounding of its own —
+        AiChatPanel's own card supplies that) to avoid a double-card look.
       */}
       <div
-        className={`overflow-hidden transition-[width] duration-300 ease-in-out min-[1201px]:sticky min-[1201px]:top-6 min-[1201px]:shrink-0 ${
-          aiOpen ? "min-[1201px]:w-[380px]" : "hidden min-[1201px]:block min-[1201px]:w-0"
+        className={`fixed inset-x-0 bottom-0 z-50 overflow-hidden min-[1201px]:static min-[1201px]:inset-auto min-[1201px]:z-auto min-[1201px]:sticky min-[1201px]:top-6 min-[1201px]:shrink-0 transition-[width] duration-300 ease-in-out ${
+          aiOpen ? "min-[1201px]:w-[380px]" : "min-[1201px]:w-0"
         }`}
       >
         <div
           className={`w-full transition-transform duration-300 ease-in-out min-[1201px]:w-[380px] ${
-            aiOpen ? "translate-x-0" : "min-[1201px]:translate-x-full"
+            aiOpen
+              ? "translate-y-0 min-[1201px]:translate-x-0"
+              : "translate-y-full min-[1201px]:translate-y-0 min-[1201px]:translate-x-full"
           }`}
         >
           <AiChatPanel
