@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, Mic, MicOff, Send, FileText, ChevronDown } from "lucide-react";
+import { MessageCircle, Mic, MicOff, Send, FileText, ChevronDown, X } from "lucide-react";
 import type { ChatMessage as PrismaChatMessage, MedicalFile } from "@prisma/client";
 import { Button } from "@/components/ui/Button";
 import { useSpeechRecognition } from "@/lib/hooks/useSpeechRecognition";
@@ -13,8 +13,12 @@ interface AiChatPanelProps {
   files: Pick<MedicalFile, "id" | "fileName">[];
   /** "widget": collapsible, triggered by a button — legacy inline trigger.
    *  "page": always expanded, fills its container — used as a standalone portal page.
-   *  "sidebar": always expanded, persistent split-view panel — used on the EMR chart. */
+   *  "sidebar": persistent split-view panel — used on the EMR chart; visibility is
+   *  owned by the parent (see ChartShell), so this variant renders unconditionally
+   *  open whenever mounted and surfaces a close control via onClose. */
   variant?: "widget" | "page" | "sidebar";
+  /** Only used by variant="sidebar" — lets the parent unmount/hide the panel. */
+  onClose?: () => void;
 }
 
 interface DisplayMessage {
@@ -24,7 +28,14 @@ interface DisplayMessage {
   citedFileIds: string[];
 }
 
-export function AiChatPanel({ patientId, patientName, initialMessages, files, variant = "widget" }: AiChatPanelProps) {
+export function AiChatPanel({
+  patientId,
+  patientName,
+  initialMessages,
+  files,
+  variant = "widget",
+  onClose,
+}: AiChatPanelProps) {
   const [open, setOpen] = useState(variant !== "widget");
   const [messages, setMessages] = useState<DisplayMessage[]>(() =>
     initialMessages.map((m) => ({
@@ -97,14 +108,16 @@ export function AiChatPanel({ patientId, patientName, initialMessages, files, va
   const isSidebar = variant === "sidebar";
   const isPage = variant === "page";
 
+  // Mobile-first: base height is the smallest (mobile) tier, then each larger
+  // breakpoint only adds an override — avoids relying on max-* specificity ordering.
   const wrapperClass = isSidebar
-    ? "flex h-full w-full flex-col min-[901px]:w-[380px] min-[901px]:shrink-0"
+    ? "flex w-full flex-col h-[400px] min-[521px]:h-[460px] min-[1201px]:sticky min-[1201px]:top-6 min-[1201px]:h-[calc(100vh-3rem)] min-[1201px]:max-h-[700px] min-[1201px]:w-[380px] min-[1201px]:shrink-0"
     : isPage
       ? "flex w-full flex-col gap-2"
       : "flex w-full flex-col items-end gap-2 sm:w-80";
 
   const cardHeightClass = isSidebar
-    ? "h-full min-h-[420px] max-[520px]:min-h-[320px]"
+    ? "h-full"
     : isPage
       ? "h-[70vh]"
       : "h-[420px]";
@@ -124,11 +137,21 @@ export function AiChatPanel({ patientId, patientName, initialMessages, files, va
           className={`flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg ${cardHeightClass}`}
         >
           {isSidebar ? (
-            <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+            <div className="relative border-b border-slate-100 bg-slate-50 px-4 py-3">
               <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-                <span className="text-blue-600">✦</span> Ask AI
+                <span className="text-[#2f66ea]">✦</span> Ask AI
               </p>
               <p className="mt-0.5 text-[11px] text-slate-500">this chart&apos;s documents only</p>
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close Ask AI"
+                  className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
           ) : (
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
@@ -150,7 +173,7 @@ export function AiChatPanel({ patientId, patientName, initialMessages, files, va
             {messages.map((m) =>
               m.role === "user" ? (
                 <div key={m.id} className="flex justify-end">
-                  <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-blue-600 px-3 py-2 text-sm text-white">
+                  <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-[#2f66ea] px-3 py-2 text-sm text-white">
                     {m.content}
                   </div>
                 </div>
@@ -225,7 +248,7 @@ export function AiChatPanel({ patientId, patientName, initialMessages, files, va
                 type="submit"
                 disabled={sending || !input.trim()}
                 aria-label="Send"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2f66ea] text-white transition-colors hover:bg-[#2554c7] disabled:cursor-not-allowed disabled:bg-[#a8c0f5]"
               >
                 <Send size={14} />
               </button>
