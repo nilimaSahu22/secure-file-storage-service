@@ -3,9 +3,11 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { PDFParse } from "pdf-parse";
-import type { Department, Role, MedicalFile } from "@prisma/client";
+import type { Department, MedicalFile } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getS3Env } from "@/lib/env";
+
+export { FileAccessDeniedError, assertDepartmentAccess, filterFilesForStaff, type StaffAccessor } from "@/lib/services/fileAccess";
 
 const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = [
@@ -16,35 +18,6 @@ const ALLOWED_MIME_TYPES = [
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ];
-
-export class FileAccessDeniedError extends Error {
-  constructor() {
-    super("Your department does not have access to this file.");
-    this.name = "FileAccessDeniedError";
-  }
-}
-
-export interface StaffAccessor {
-  id: string;
-  role: Role;
-  department: Department | null;
-}
-
-// Files with no department set are unrestricted (general records); admins see everything.
-export function assertDepartmentAccess(staff: StaffAccessor, fileDepartment: Department | null) {
-  if (staff.role === "ADMIN" || !fileDepartment) return;
-  if (staff.department !== fileDepartment) {
-    throw new FileAccessDeniedError();
-  }
-}
-
-export function filterFilesForStaff<T extends { department: Department | null }>(
-  files: T[],
-  staff: StaffAccessor
-): T[] {
-  if (staff.role === "ADMIN") return files;
-  return files.filter((f) => !f.department || f.department === staff.department);
-}
 
 let cachedClient: S3Client | null = null;
 function getS3Client(): S3Client {
