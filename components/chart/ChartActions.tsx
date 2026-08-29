@@ -37,7 +37,7 @@ export function ChartActions({ patientId }: ChartActionsProps) {
         <Sparkles size={14} />
         {summarizing ? "Summarizing…" : "Summarize Chart"}
       </Button>
-      <Button onClick={() => router.push(`/dashboard/patients/${patientId}/visit`)}>
+      <Button variant="outline" onClick={() => router.push(`/dashboard/patients/${patientId}/visit`)}>
         <Mic size={14} />
         Start Visit
       </Button>

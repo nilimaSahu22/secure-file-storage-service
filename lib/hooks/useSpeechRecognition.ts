@@ -10,6 +10,7 @@ interface UseSpeechRecognitionOptions {
 export function useSpeechRecognition({ onFinalTranscript }: UseSpeechRecognitionOptions) {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
@@ -29,21 +30,34 @@ export function useSpeechRecognition({ onFinalTranscript }: UseSpeechRecognition
     }
 
     setError(null);
+    setInterimTranscript("");
     const recognition = new SpeechRecognitionCtor();
     recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
-      const last = event.results[event.results.length - 1];
-      const transcript = last?.[0]?.transcript?.trim();
-      if (transcript) onFinalTranscript(transcript);
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const transcript = result[0]?.transcript ?? "";
+        if (result.isFinal) {
+          if (transcript.trim()) onFinalTranscript(transcript.trim());
+        } else {
+          interim += transcript;
+        }
+      }
+      setInterimTranscript(interim);
     };
     recognition.onerror = (event) => {
       setError(event.error === "not-allowed" ? "Microphone access was denied." : "Voice input failed.");
       setListening(false);
+      setInterimTranscript("");
     };
-    recognition.onend = () => setListening(false);
+    recognition.onend = () => {
+      setListening(false);
+      setInterimTranscript("");
+    };
 
     recognitionRef.current = recognition;
     recognition.start();
@@ -53,7 +67,8 @@ export function useSpeechRecognition({ onFinalTranscript }: UseSpeechRecognition
   function stop() {
     recognitionRef.current?.stop();
     setListening(false);
+    setInterimTranscript("");
   }
 
-  return { supported, listening, error, start, stop };
+  return { supported, listening, interimTranscript, error, start, stop };
 }

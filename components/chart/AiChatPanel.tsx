@@ -98,7 +98,7 @@ export function AiChatPanel({ patientId, patientName, initialMessages, files, va
   return (
     <div className={isPage ? "flex w-full flex-col gap-2" : "flex w-full flex-col items-end gap-2 sm:w-80"}>
       {!isPage && (
-        <Button variant="outline" onClick={() => setOpen((o) => !o)} className="w-full sm:w-auto">
+        <Button onClick={() => setOpen((o) => !o)} className="w-full sm:w-auto">
           <MessageCircle size={14} />
           Ask AI
           <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
@@ -163,6 +163,18 @@ export function AiChatPanel({ patientId, patientName, initialMessages, files, va
             {speech.error && <p className="text-xs text-red-600">{speech.error}</p>}
           </div>
 
+          {speech.listening && (
+            <div className="flex items-center gap-2 border-t border-slate-100 bg-red-50/60 px-4 py-2">
+              <span className="relative flex h-2 w-2 shrink-0 items-center justify-center">
+                <span className="absolute h-2 w-2 animate-ping rounded-full bg-red-500 opacity-75" />
+                <span className="relative h-2 w-2 rounded-full bg-red-500" />
+              </span>
+              <p className="min-h-[1em] flex-1 text-xs italic text-slate-600">
+                {speech.interimTranscript || "Listening…"}
+              </p>
+            </div>
+          )}
+
           <form onSubmit={onSubmit} className="flex items-center gap-2 border-t border-slate-100 p-3">
             <input
               value={input}
@@ -175,13 +187,16 @@ export function AiChatPanel({ patientId, patientName, initialMessages, files, va
                 type="button"
                 onClick={onMicClick}
                 aria-label={speech.listening ? "Stop voice input" : "Start voice input"}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+                className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors ${
                   speech.listening
                     ? "border-red-300 bg-red-50 text-red-600"
                     : "border-slate-300 text-slate-500 hover:bg-slate-50"
                 }`}
               >
-                {speech.listening ? <MicOff size={15} /> : <Mic size={15} />}
+                {speech.listening && (
+                  <span className="absolute inset-0 animate-ping rounded-lg bg-red-400 opacity-30" />
+                )}
+                <span className="relative">{speech.listening ? <MicOff size={15} /> : <Mic size={15} />}</span>
               </button>
             )}
             <Button type="submit" size="sm" disabled={sending || !input.trim()}>
