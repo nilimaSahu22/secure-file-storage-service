@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Sparkles, Mic } from "lucide-react";
+import { ArrowLeft, Sparkles, Mic, Square, FileText } from "lucide-react";
 import type { Patient, StaffUser } from "@prisma/client";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -23,12 +23,19 @@ Patient: No chest pain. I do get a little winded going up the stairs, more than 
 Doctor: Let's check your vitals and go over your recent labs. Blood pressure looks slightly elevated today. We'll adjust your plan and recheck in a few weeks.
 Patient: Sounds good, thank you.`;
 
+type RecordingState = "idle" | "recording" | "transcribing";
+
 export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
   const router = useRouter();
   const [authorId, setAuthorId] = useState(staff.find((s) => s.role === "DOCTOR")?.id ?? staff[0]?.id ?? "");
   const [transcript, setTranscript] = useState(MOCK_TRANSCRIPT);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [recordingState, setRecordingState] = useState<RecordingState>("idle");
+  const [recordError, setRecordError] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   async function onGenerate() {
     setGenerating(true);
@@ -51,6 +58,74 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
     }
   }
 
+  async function startRecording() {
+    setRecordError(null);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setRecordError("Audio recording isn't supported in this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        void transcribeRecording();
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecordingState("recording");
+    } catch {
+      setRecordError("Microphone access was denied or unavailable.");
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop();
+  }
+
+  async function transcribeRecording() {
+    setRecordingState("transcribing");
+    try {
+      const mimeType = mediaRecorderRef.current?.mimeType || "audio/webm";
+      const blob = new Blob(chunksRef.current, { type: mimeType });
+
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": mimeType },
+        body: blob,
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setRecordError(
+          res.status === 503
+            ? "Ambient transcription isn't configured yet."
+            : (data?.error ?? "Could not transcribe the recording.")
+        );
+        return;
+      }
+
+      const data = await res.json();
+      setTranscript(data.transcript);
+    } catch {
+      setRecordError("Could not transcribe the recording. Please try again.");
+    } finally {
+      setRecordingState("idle");
+    }
+  }
+
+  function loadSampleTranscript() {
+    setTranscript(MOCK_TRANSCRIPT);
+    setRecordError(null);
+  }
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 p-6">
       <Link
@@ -68,9 +143,9 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
         </div>
 
         <p className="mb-4 text-sm text-slate-500">
-          Edit the visit transcript below, then generate a structured SOAP note.
-          AI-generated notes are labeled and should be reviewed before they become part of
-          the chart.
+          Record the visit to transcribe it automatically, or edit the transcript below,
+          then generate a structured SOAP note. AI-generated notes are labeled and should
+          be reviewed before they become part of the chart.
         </p>
 
         <div className="mb-4">
@@ -88,6 +163,32 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
           </Select>
         </div>
 
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {recordingState === "idle" && (
+            <Button variant="outline" onClick={startRecording}>
+              <Mic size={14} /> Record Visit
+            </Button>
+          )}
+          {recordingState === "recording" && (
+            <Button variant="danger" onClick={stopRecording}>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute h-2.5 w-2.5 animate-ping rounded-full bg-white opacity-75" />
+                <span className="relative h-2.5 w-2.5 rounded-full bg-white" />
+              </span>
+              Stop Recording
+            </Button>
+          )}
+          {recordingState === "transcribing" && (
+            <Button variant="outline" disabled>
+              <Square size={14} className="animate-pulse" /> Transcribing…
+            </Button>
+          )}
+          <Button variant="ghost" onClick={loadSampleTranscript} disabled={recordingState !== "idle"}>
+            <FileText size={14} /> Load Sample Transcript
+          </Button>
+        </div>
+        {recordError && <p className="mb-3 text-sm text-red-600">{recordError}</p>}
+
         <label className="mb-1.5 block text-sm font-medium text-slate-700">
           Visit transcript
         </label>
@@ -104,7 +205,10 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
           <Link href={`/dashboard/patients/${patient.id}`}>
             <Button variant="outline">Cancel</Button>
           </Link>
-          <Button onClick={onGenerate} disabled={generating || !transcript.trim()}>
+          <Button
+            onClick={onGenerate}
+            disabled={generating || recordingState !== "idle" || !transcript.trim()}
+          >
             <Sparkles size={14} />
             {generating ? "Generating note…" : "Generate Note"}
           </Button>
