@@ -52,3 +52,32 @@ export function getS3Env() {
   cachedS3 = parsed.data;
   return cachedS3;
 }
+
+const deepgramEnvSchema = z.object({
+  DEEPGRAM_API_KEY: z.string().min(1),
+  DEEPGRAM_MODEL: z.string().min(1).default("nova-3-medical"),
+});
+
+export class DeepgramNotConfiguredError extends Error {
+  constructor() {
+    super("Ambient transcription is not configured (missing DEEPGRAM_API_KEY)");
+    this.name = "DeepgramNotConfiguredError";
+  }
+}
+
+let cachedDeepgram: z.infer<typeof deepgramEnvSchema> | null = null;
+
+// Same lazy-validation pattern as getS3Env() — only the /api/transcribe path needs
+// this, so the rest of the app keeps working before a Deepgram key is configured.
+export function getDeepgramEnv() {
+  if (cachedDeepgram) return cachedDeepgram;
+
+  const parsed = deepgramEnvSchema.safeParse(process.env);
+  if (!parsed.success) {
+    console.error("Invalid Deepgram environment variables:", parsed.error.flatten().fieldErrors);
+    throw new DeepgramNotConfiguredError();
+  }
+
+  cachedDeepgram = parsed.data;
+  return cachedDeepgram;
+}
