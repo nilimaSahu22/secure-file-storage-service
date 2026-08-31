@@ -46,12 +46,17 @@ export async function POST(request: NextRequest) {
 
     const utterances = response.results.utterances ?? [];
     let transcript: string;
+    let speakers: number[] = [];
 
     if (utterances.length > 0) {
       transcript = utterances
         .map((u) => `Speaker ${u.speaker ?? "?"}: ${(u.transcript ?? "").trim()}`)
         .filter((line) => !line.endsWith(": "))
         .join("\n");
+
+      // Distinct speaker ids, in order of first appearance — lets the client offer
+      // a "who's who" picker only when diarization actually separated two voices.
+      speakers = [...new Set(utterances.map((u) => u.speaker).filter((s): s is number => s !== undefined))];
     } else {
       // Diarization/utterances can come back empty for very short or silent
       // clips — fall back to the plain flat transcript rather than an empty result.
@@ -62,7 +67,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "EmptyTranscript" }, { status: 502 });
     }
 
-    return NextResponse.json({ transcript });
+    return NextResponse.json({ transcript, speakers });
   } catch (err) {
     console.error("Transcription request failed:", err);
     return NextResponse.json({ error: "TranscriptionFailed" }, { status: 502 });

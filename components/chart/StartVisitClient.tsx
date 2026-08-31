@@ -24,6 +24,15 @@ Doctor: Let's check your vitals and go over your recent labs. Blood pressure loo
 Patient: Sounds good, thank you.`;
 
 type RecordingState = "idle" | "recording" | "transcribing";
+type SpeakerRole = "Doctor" | "Patient";
+
+function applySpeakerRoles(rawTranscript: string, roles: Record<number, SpeakerRole>): string {
+  let labeled = rawTranscript;
+  for (const [speakerId, role] of Object.entries(roles)) {
+    labeled = labeled.replace(new RegExp(`^Speaker ${speakerId}:`, "gm"), `${role}:`);
+  }
+  return labeled;
+}
 
 export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
   const router = useRouter();
@@ -36,6 +45,20 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
   const [recordError, setRecordError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  // Raw, un-relabeled transcript ("Speaker 0:", "Speaker 1:") kept alongside the
+  // editable transcript so toggling the who's-who picker can always re-derive
+  // labels from a clean source instead of chaining regex replaces on itself.
+  const [rawTranscript, setRawTranscript] = useState<string | null>(null);
+  const [speakers, setSpeakers] = useState<number[]>([]);
+  const [speakerRoles, setSpeakerRoles] = useState<Record<number, SpeakerRole>>({});
+  const [hasTranscribed, setHasTranscribed] = useState(false);
+
+  function setSpeakerRole(speakerId: number, role: SpeakerRole) {
+    const nextRoles = { ...speakerRoles, [speakerId]: role };
+    setSpeakerRoles(nextRoles);
+    if (rawTranscript) setTranscript(applySpeakerRoles(rawTranscript, nextRoles));
+  }
 
   async function onGenerate() {
     setGenerating(true);
@@ -113,7 +136,28 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
       }
 
       const data = await res.json();
-      setTranscript(data.transcript);
+      const detected: number[] = data.speakers ?? [];
+      setHasTranscribed(true);
+
+      if (detected.length >= 2) {
+        // Best-effort default: whoever speaks first is usually the clinician
+        // opening the visit. Editable via the picker below.
+        const defaults: Record<number, SpeakerRole> = {};
+        detected.forEach((id, i) => {
+          defaults[id] = i === 0 ? "Doctor" : "Patient";
+        });
+        setRawTranscript(data.transcript);
+        setSpeakers(detected);
+        setSpeakerRoles(defaults);
+        setTranscript(applySpeakerRoles(data.transcript, defaults));
+      } else {
+        // Diarization didn't separate two voices — nothing to relabel, just
+        // show the flat transcript as-is for manual editing.
+        setRawTranscript(null);
+        setSpeakers([]);
+        setSpeakerRoles({});
+        setTranscript(data.transcript);
+      }
     } catch {
       setRecordError("Could not transcribe the recording. Please try again.");
     } finally {
@@ -123,6 +167,10 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
 
   function loadSampleTranscript() {
     setTranscript(MOCK_TRANSCRIPT);
+    setRawTranscript(null);
+    setSpeakers([]);
+    setSpeakerRoles({});
+    setHasTranscribed(false);
     setRecordError(null);
   }
 
@@ -188,6 +236,30 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
           </Button>
         </div>
         {recordError && <p className="mb-3 text-sm text-red-600">{recordError}</p>}
+
+        {speakers.length >= 2 && (
+          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+            <span className="font-medium text-slate-700">Who&apos;s who?</span>
+            {speakers.map((id) => (
+              <label key={id} className="flex items-center gap-1.5">
+                Speaker {id}
+                <select
+                  value={speakerRoles[id] ?? "Patient"}
+                  onChange={(e) => setSpeakerRole(id, e.target.value as SpeakerRole)}
+                  className="rounded border border-slate-300 px-1.5 py-0.5 text-sm outline-none focus:border-blue-500"
+                >
+                  <option value="Doctor">Doctor</option>
+                  <option value="Patient">Patient</option>
+                </select>
+              </label>
+            ))}
+          </div>
+        )}
+        {recordingState === "idle" && hasTranscribed && rawTranscript === null && (
+          <p className="mb-3 text-sm text-slate-500">
+            Speaker separation wasn&apos;t detected in this recording — edit the transcript below if needed.
+          </p>
+        )}
 
         <label className="mb-1.5 block text-sm font-medium text-slate-700">
           Visit transcript
