@@ -40,12 +40,14 @@ export async function POST(request: NextRequest) {
 
   // "multi" turns on Nova-3 multilingual transcription, which follows the speaker's
   // language and mid-sentence code-switching (e.g. a clinician moving between Hindi
-  // and English) without a language picker.
+  // and English) without a language picker. English-only models (e.g. nova-3-medical,
+  // *-en) reject language=multi with a 400, so fall back to "en" for those.
+  const englishOnlyModel = /medical|(^|[-_])en([-_]|$)/i.test(env.DEEPGRAM_MODEL);
   try {
     const deepgram = new DeepgramClient({ apiKey: env.DEEPGRAM_API_KEY });
     const response = await deepgram.listen.v1.media.transcribeFile(audioBuffer, {
       model: env.DEEPGRAM_MODEL,
-      language: "multi",
+      language: englishOnlyModel ? "en" : "multi",
       diarize,
       punctuate: true,
       smart_format: true,
@@ -111,7 +113,8 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error("Transcription request failed:", err);
-    return NextResponse.json({ error: "TranscriptionFailed" }, { status: 502 });
+    const detail = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: "TranscriptionFailed", detail }, { status: 502 });
   }
 }
 
