@@ -69,37 +69,76 @@ export async function POST(request: NextRequest) {
     }
 
     const utterances = response.results.utterances ?? [];
-    let transcript: string;
-    let speakers: number[] = [];
+    const diarizedTranscript =
+      utterances.length > 0
+        ? utterances
+            .map((u) => `Speaker ${u.speaker ?? "?"}: ${(u.transcript ?? "").trim()}`)
+            .filter((line) => !line.endsWith(": "))
+            .join("\n")
+        : "";
 
-    if (utterances.length > 0) {
-      transcript = utterances
-        .map((u) => `Speaker ${u.speaker ?? "?"}: ${(u.transcript ?? "").trim()}`)
-        .filter((line) => !line.endsWith(": "))
-        .join("\n");
+    // Distinct speaker ids, in order of first appearance.
+    const speakers = [
+      ...new Set(utterances.map((u) => u.speaker).filter((s): s is number => s !== undefined)),
+    ];
 
-      // Distinct speaker ids, in order of first appearance.
-      speakers = [...new Set(utterances.map((u) => u.speaker).filter((s): s is number => s !== undefined))];
-    } else {
-      // Diarization/utterances can come back empty for very short or silent clips.
-      transcript = flatTranscript;
+    if (speakers.length >= 2) {
+      // Real two-voice audio: diarization split it. Ask the model which anonymous
+      // speaker is the clinician vs the patient (who asks history/exam questions,
+      // who describes symptoms) for the client's "who's who" picker default.
+      const speakerRoles =
+        speakers.length === 2 ? await inferSpeakerRoles(diarizedTranscript, speakers) : {};
+      return NextResponse.json({
+        transcript: diarizedTranscript,
+        speakers,
+        speakerRoles,
+        detectedLanguage,
+      });
     }
 
-    if (!transcript) {
+    // Only one voice was detected (e.g. a single mic, or one person voicing both
+    // sides in a demo) — diarization can't help. Split the dialogue by meaning
+    // instead: the model labels each turn Doctor:/Patient: from the content.
+    if (!flatTranscript) {
       return NextResponse.json({ error: "EmptyTranscript" }, { status: 502 });
     }
-
-    // Ask the model which anonymous speaker is the clinician vs the patient, based
-    // on who asks history/exam questions and explains the plan. The client uses this
-    // as the default for its "who's who" picker; falls back to "first speaker is the
-    // doctor" if inference is unavailable or ambiguous.
-    const speakerRoles =
-      speakers.length === 2 ? await inferSpeakerRoles(transcript, speakers) : {};
-
-    return NextResponse.json({ transcript, speakers, speakerRoles, detectedLanguage });
+    const segmentedTranscript = await segmentDialogue(flatTranscript);
+    return NextResponse.json({
+      transcript: segmentedTranscript,
+      speakers: [],
+      segmented: true,
+      detectedLanguage,
+    });
   } catch (err) {
     console.error("Transcription request failed:", err);
     return NextResponse.json({ error: "TranscriptionFailed" }, { status: 502 });
+  }
+}
+
+async function segmentDialogue(flatTranscript: string): Promise<string> {
+  try {
+    const client = getAnthropicClient();
+    const response = await client.messages.create({
+      model: getModel(),
+      max_tokens: 2000,
+      system:
+        "You are given the raw transcript of a medical visit where speaker separation " +
+        "failed, so it is one unbroken block of text. Rewrite it as a turn-by-turn " +
+        "dialogue, starting each turn with 'Doctor:' or 'Patient:'. The doctor asks " +
+        "about symptoms, history, and allergies and explains the assessment and plan; " +
+        "the patient describes how they feel and answers. Keep the original wording and " +
+        "the original language — only add the speaker labels and line breaks. If the " +
+        "text is clearly not a two-person conversation, return it unchanged. Output only " +
+        "the transcript, nothing else.",
+      messages: [{ role: "user", content: flatTranscript }],
+    });
+
+    const textBlock = response.content.find((b) => b.type === "text");
+    const segmented = textBlock && textBlock.type === "text" ? textBlock.text.trim() : "";
+    return segmented || flatTranscript;
+  } catch (err) {
+    console.error("Dialogue segmentation failed, returning flat transcript:", err);
+    return flatTranscript;
   }
 }
 
