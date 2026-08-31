@@ -53,6 +53,9 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
   const [speakers, setSpeakers] = useState<number[]>([]);
   const [speakerRoles, setSpeakerRoles] = useState<Record<number, SpeakerRole>>({});
   const [hasTranscribed, setHasTranscribed] = useState(false);
+  // True when a single voice was recorded and the dialogue was split into
+  // Doctor/Patient turns by content rather than by speaker separation.
+  const [segmented, setSegmented] = useState(false);
 
   function setSpeakerRole(speakerId: number, role: SpeakerRole) {
     const nextRoles = { ...speakerRoles, [speakerId]: role };
@@ -138,6 +141,7 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
       const data = await res.json();
       const detected: number[] = data.speakers ?? [];
       setHasTranscribed(true);
+      setSegmented(!!data.segmented);
 
       if (detected.length >= 2) {
         // The server infers who's the clinician vs the patient from the transcript
@@ -173,6 +177,7 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
     setSpeakers([]);
     setSpeakerRoles({});
     setHasTranscribed(false);
+    setSegmented(false);
     setRecordError(null);
   }
 
@@ -257,7 +262,14 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
             ))}
           </div>
         )}
-        {recordingState === "idle" && hasTranscribed && rawTranscript === null && (
+        {recordingState === "idle" && hasTranscribed && rawTranscript === null && segmented && (
+          <p className="mb-3 text-sm text-slate-500">
+            Only one voice was picked up, so the conversation was split into Doctor and
+            Patient turns by what was said. Review and correct the transcript below before
+            generating the note.
+          </p>
+        )}
+        {recordingState === "idle" && hasTranscribed && rawTranscript === null && !segmented && (
           <p className="mb-3 text-sm text-slate-500">
             Speaker separation wasn&apos;t detected in this recording — edit the transcript below if needed.
           </p>
