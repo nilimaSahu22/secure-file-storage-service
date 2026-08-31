@@ -39,7 +39,9 @@ export function useVoiceInput({ onTranscript }: UseVoiceInputOptions) {
       const mimeType = recorderRef.current?.mimeType || "audio/webm";
       const blob = new Blob(chunksRef.current, { type: mimeType });
 
-      const res = await fetch("/api/transcribe", {
+      // diarize=false: one person asking a question — no speaker separation or
+      // "Speaker N:" labels, just the plain spoken text.
+      const res = await fetch("/api/transcribe?diarize=false", {
         method: "POST",
         headers: { "Content-Type": mimeType },
         body: blob,

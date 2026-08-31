@@ -140,11 +140,13 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
       setHasTranscribed(true);
 
       if (detected.length >= 2) {
-        // Best-effort default: whoever speaks first is usually the clinician
-        // opening the visit. Editable via the picker below.
+        // The server infers who's the clinician vs the patient from the transcript
+        // (who asks the questions, who describes symptoms). Fall back to "first
+        // speaker is the doctor" if it didn't return a mapping. Editable below.
+        const inferred: Partial<Record<number, SpeakerRole>> = data.speakerRoles ?? {};
         const defaults: Record<number, SpeakerRole> = {};
         detected.forEach((id, i) => {
-          defaults[id] = i === 0 ? "Doctor" : "Patient";
+          defaults[id] = inferred[id] ?? (i === 0 ? "Doctor" : "Patient");
         });
         setRawTranscript(data.transcript);
         setSpeakers(detected);
