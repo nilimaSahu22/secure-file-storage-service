@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { MessageCircle, Mic, MicOff, Send, FileText, ChevronDown, X } from "lucide-react";
 import type { ChatMessage as PrismaChatMessage, MedicalFile } from "@prisma/client";
 import { Button } from "@/components/ui/Button";
-import { useSpeechRecognition } from "@/lib/hooks/useSpeechRecognition";
+import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
 
 interface AiChatPanelProps {
   patientId: string;
@@ -48,10 +48,16 @@ export function AiChatPanel({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // BCP-47 code Deepgram detected for the last spoken question, if any. Passed to
+  // the chat API so the assistant replies in the language the question was asked in.
+  const [spokenLanguage, setSpokenLanguage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const speech = useSpeechRecognition({
-    onFinalTranscript: (text) => setInput((prev) => (prev ? `${prev} ${text}` : text)),
+  const voice = useVoiceInput({
+    onTranscript: (text, detectedLanguage) => {
+      setSpokenLanguage(detectedLanguage);
+      setInput((prev) => (prev ? `${prev} ${text}` : text));
+    },
   });
 
   useEffect(() => {
@@ -75,7 +81,7 @@ export function AiChatPanel({
       const res = await fetch("/api/chart-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patientId, content: trimmed }),
+        body: JSON.stringify({ patientId, content: trimmed, language: spokenLanguage }),
       });
 
       if (!res.ok) {
@@ -101,8 +107,8 @@ export function AiChatPanel({
   }
 
   function onMicClick() {
-    if (speech.listening) speech.stop();
-    else speech.start();
+    if (voice.recording) voice.stop();
+    else voice.start();
   }
 
   const isSidebar = variant === "sidebar";
@@ -207,17 +213,17 @@ export function AiChatPanel({
               </div>
             )}
             {error && <p className="text-xs text-red-600">{error}</p>}
-            {speech.error && <p className="text-xs text-red-600">{speech.error}</p>}
+            {voice.error && <p className="text-xs text-red-600">{voice.error}</p>}
           </div>
 
-          {speech.listening && (
+          {(voice.recording || voice.transcribing) && (
             <div className="flex items-center gap-2 border-t border-slate-100 bg-red-50/60 px-4 py-2">
               <span className="relative flex h-2 w-2 shrink-0 items-center justify-center">
                 <span className="absolute h-2 w-2 animate-ping rounded-full bg-red-500 opacity-75" />
                 <span className="relative h-2 w-2 rounded-full bg-red-500" />
               </span>
               <p className="min-h-[1em] flex-1 text-xs italic text-slate-600">
-                {speech.interimTranscript || "Listening…"}
+                {voice.recording ? "Listening… speak in any language, then tap the mic to stop." : "Transcribing…"}
               </p>
             </div>
           )}
@@ -226,24 +232,25 @@ export function AiChatPanel({
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={speech.listening ? "Listening…" : "Ask a question"}
+              placeholder={voice.recording ? "Listening…" : voice.transcribing ? "Transcribing…" : "Ask a question"}
               className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
-            {speech.supported && (
+            {voice.supported && (
               <button
                 type="button"
                 onClick={onMicClick}
-                aria-label={speech.listening ? "Stop voice input" : "Start voice input"}
-                className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors ${
-                  speech.listening
+                disabled={voice.transcribing}
+                aria-label={voice.recording ? "Stop voice input" : "Start voice input"}
+                className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:opacity-50 ${
+                  voice.recording
                     ? "border-red-300 bg-red-50 text-red-600"
                     : "border-slate-300 text-slate-500 hover:bg-slate-50"
                 }`}
               >
-                {speech.listening && (
+                {voice.recording && (
                   <span className="absolute inset-0 animate-ping rounded-lg bg-red-400 opacity-30" />
                 )}
-                <span className="relative">{speech.listening ? <MicOff size={15} /> : <Mic size={15} />}</span>
+                <span className="relative">{voice.recording ? <MicOff size={15} /> : <Mic size={15} />}</span>
               </button>
             )}
             {isSidebar ? (

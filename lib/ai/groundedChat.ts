@@ -20,7 +20,9 @@ export const GROUNDED_CHAT_SYSTEM_PROMPT =
   "instead of guessing. When you use information from a document, reference it by its " +
   'exact file name (e.g. "According to \\"Discharge Summary.pdf\\"..."). Respond in ' +
   "plain prose only, no markdown, no headers, no bullet points. Keep answers brief and " +
-  "directly responsive to the question.";
+  "directly responsive to the question. Reply in the same language the user wrote their " +
+  "most recent message in; if that is unclear, reply in English. Keep document file " +
+  "names verbatim even when replying in another language.";
 
 export function buildDocumentContext(files: FileWithMaybeText[]): {
   context: string;

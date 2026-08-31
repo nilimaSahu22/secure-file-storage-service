@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       model: getModel(),
       max_tokens: 1024,
       system:
-        "You are a clinical scribe. Given a patient's chart context and a visit transcript, produce a structured SOAP note. Base the note only on the transcript and chart context provided — do not invent findings. Keep each section concise and clinically appropriate.",
+        "You are a clinical scribe. Given a patient's chart context and a visit transcript, produce a structured SOAP note. Base the note only on the transcript and chart context provided — do not invent findings. Keep each section concise and clinically appropriate. Write the note in the same language the visit transcript is predominantly in; if the transcript mixes languages, use the language the clinician speaks.",
       messages: [
         {
           role: "user",
