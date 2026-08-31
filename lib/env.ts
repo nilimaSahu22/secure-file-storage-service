@@ -55,12 +55,14 @@ export function getS3Env() {
 
 const deepgramEnvSchema = z.object({
   DEEPGRAM_API_KEY: z.string().min(1),
-  DEEPGRAM_MODEL: z.string().min(1).default("nova-3-medical"),
+  // nova-3 supports multilingual transcription and code-switching (language: "multi").
+  // Override to "nova-3-medical" for English-only visits with stronger clinical vocab.
+  DEEPGRAM_MODEL: z.string().min(1).default("nova-3"),
 });
 
 export class DeepgramNotConfiguredError extends Error {
   constructor() {
-    super("Ambient transcription is not configured (missing DEEPGRAM_API_KEY)");
+    super("Voice transcription is not configured (missing DEEPGRAM_API_KEY)");
     this.name = "DeepgramNotConfiguredError";
   }
 }

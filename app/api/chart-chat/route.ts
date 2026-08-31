@@ -16,6 +16,10 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const patientId = body?.patientId;
   const content = typeof body?.content === "string" ? body.content.trim() : "";
+  // Optional BCP-47 hint from voice input (Deepgram's detected language). The prompt
+  // already asks the model to mirror the user's language; this reinforces it for
+  // spoken questions, where transliteration can make the text language ambiguous.
+  const language = typeof body?.language === "string" ? body.language.trim() : "";
 
   if (typeof patientId !== "string" || !patientId) {
     return NextResponse.json({ error: "patientId is required" }, { status: 400 });
@@ -55,7 +59,9 @@ export async function POST(request: NextRequest) {
     const response = await client.messages.create({
       model: getModel(),
       max_tokens: 512,
-      system: `${GROUNDED_CHAT_SYSTEM_PROMPT}\n\nDocuments:\n${context}`,
+      system: `${GROUNDED_CHAT_SYSTEM_PROMPT}${
+        language ? `\n\nThe user's spoken question was detected as language "${language}". Reply in that language.` : ""
+      }\n\nDocuments:\n${context}`,
       messages: [
         ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
         { role: "user" as const, content },
