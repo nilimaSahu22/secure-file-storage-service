@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { PDFParse } from "pdf-parse";
 import type { Department, MedicalFile } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getS3Env } from "@/lib/env";
@@ -126,6 +125,9 @@ async function extractPdfText(storageKey: string): Promise<string | null> {
   if (!response.Body) return null;
 
   const bytes = await response.Body.transformToByteArray();
+  // Imported lazily: pdf-parse/pdfjs-dist reference browser globals that break
+  // module evaluation in serverless runtimes, so only the PDF path pays that cost.
+  const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: Buffer.from(bytes) });
   try {
     const result = await parser.getText();
