@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   ScrollText,
   Workflow,
+  BookOpen,
   Menu,
   X,
   LogOut,
@@ -32,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/appointments", label: "Appointments", icon: CalendarDays, roles: ["DOCTOR", "NURSE", "ADMIN"] },
   { href: "/dashboard/tasks", label: "Task Queue", icon: ListChecks, roles: ["DOCTOR", "NURSE", "ADMIN"] },
   { href: "/dashboard/prior-auth", label: "Prior Auth", icon: FileClock, roles: ["DOCTOR", "NURSE", "ADMIN"] },
+  { href: "/dashboard/workflows", label: "Playbook", icon: BookOpen, roles: ["DOCTOR", "NURSE", "ADMIN"] },
   // Commented out for the demo — see 2026-08-31 note.
   // { href: "/dashboard/roi", label: "ROI Dashboard", icon: TrendingUp, roles: ["ADMIN", "DOCTOR"] },
   { href: "/dashboard/admin", label: "Admin", icon: ShieldCheck, roles: ["ADMIN"] },
