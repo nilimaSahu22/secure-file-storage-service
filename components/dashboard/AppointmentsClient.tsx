@@ -35,17 +35,19 @@ const STATUS_TONE = {
   NO_SHOW: "amber",
 } as const;
 
-function toLocalInputValue(date: Date): string {
+// Split a stored instant into the local calendar date ("2026-09-05") and
+// wall-clock time ("14:30") shown in the separate Date and Time fields.
+function toLocalDateTimeParts(date: Date): { date: string; time: string } {
   const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60000);
-  return local.toISOString().slice(0, 16);
+  const local = new Date(date.getTime() - offset * 60000).toISOString();
+  return { date: local.slice(0, 10), time: local.slice(11, 16) };
 }
 
-// A <input type="datetime-local"> value ("2026-09-05T14:30") carries no timezone.
-// Resolve it to an absolute instant here in the browser, where the user's timezone
-// is known, so the server stores exactly the wall-clock time that was picked.
-function localInputToISO(value: string): string {
-  return new Date(value).toISOString();
+// The Date and Time fields carry no timezone. Combine and resolve them to an
+// absolute instant here in the browser, where the user's timezone is known, so
+// the server stores exactly the wall-clock time that was picked.
+function partsToISO(date: string, time: string): string {
+  return new Date(`${date}T${time}`).toISOString();
 }
 
 export function AppointmentsClient({ appointments, patients, providers }: AppointmentsClientProps) {
@@ -55,17 +57,25 @@ export function AppointmentsClient({ appointments, patients, providers }: Appoin
 
   const [patientId, setPatientId] = useState(patients[0]?.id ?? "");
   const [providerId, setProviderId] = useState(providers[0]?.id ?? "");
-  const [scheduledAt, setScheduledAt] = useState("");
+  const [bookDate, setBookDate] = useState("");
+  const [bookTime, setBookTime] = useState("");
   const [reason, setReason] = useState("");
-  const [rescheduleAt, setRescheduleAt] = useState("");
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
 
   async function onBook(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await bookAppointmentAction({ patientId, providerId, scheduledAt: localInputToISO(scheduledAt), reason });
+      await bookAppointmentAction({
+        patientId,
+        providerId,
+        scheduledAt: partsToISO(bookDate, bookTime),
+        reason,
+      });
       setBookOpen(false);
-      setScheduledAt("");
+      setBookDate("");
+      setBookTime("");
       setReason("");
     } finally {
       setSubmitting(false);
@@ -77,7 +87,10 @@ export function AppointmentsClient({ appointments, patients, providers }: Appoin
     if (!rescheduleTarget) return;
     setSubmitting(true);
     try {
-      await rescheduleAppointmentAction(rescheduleTarget.id, localInputToISO(rescheduleAt));
+      await rescheduleAppointmentAction(
+        rescheduleTarget.id,
+        partsToISO(rescheduleDate, rescheduleTime)
+      );
       setRescheduleTarget(null);
     } finally {
       setSubmitting(false);
@@ -146,7 +159,9 @@ export function AppointmentsClient({ appointments, patients, providers }: Appoin
                         variant="outline"
                         onClick={() => {
                           setRescheduleTarget(a);
-                          setRescheduleAt(toLocalInputValue(a.scheduledAt));
+                          const parts = toLocalDateTimeParts(a.scheduledAt);
+                          setRescheduleDate(parts.date);
+                          setRescheduleTime(parts.time);
                         }}
                       >
                         Reschedule
@@ -179,14 +194,28 @@ export function AppointmentsClient({ appointments, patients, providers }: Appoin
               </option>
             ))}
           </Select>
-          <Input
-            id="book-datetime"
-            type="datetime-local"
-            label="Date & time"
-            required
-            value={scheduledAt}
-            onChange={(e) => setScheduledAt(e.target.value)}
-          />
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Input
+                id="book-date"
+                type="date"
+                label="Date"
+                required
+                value={bookDate}
+                onChange={(e) => setBookDate(e.target.value)}
+              />
+            </div>
+            <div className="flex-1">
+              <Input
+                id="book-time"
+                type="time"
+                label="Time"
+                required
+                value={bookTime}
+                onChange={(e) => setBookTime(e.target.value)}
+              />
+            </div>
+          </div>
           <Input id="book-reason" label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
           <div className="mt-2 flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setBookOpen(false)}>
@@ -201,14 +230,28 @@ export function AppointmentsClient({ appointments, patients, providers }: Appoin
 
       <Modal open={!!rescheduleTarget} onClose={() => setRescheduleTarget(null)} title="Reschedule Appointment">
         <form onSubmit={onReschedule} className="flex flex-col gap-3">
-          <Input
-            id="reschedule-datetime"
-            type="datetime-local"
-            label="New date & time"
-            required
-            value={rescheduleAt}
-            onChange={(e) => setRescheduleAt(e.target.value)}
-          />
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Input
+                id="reschedule-date"
+                type="date"
+                label="New date"
+                required
+                value={rescheduleDate}
+                onChange={(e) => setRescheduleDate(e.target.value)}
+              />
+            </div>
+            <div className="flex-1">
+              <Input
+                id="reschedule-time"
+                type="time"
+                label="New time"
+                required
+                value={rescheduleTime}
+                onChange={(e) => setRescheduleTime(e.target.value)}
+              />
+            </div>
+          </div>
           <div className="mt-2 flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setRescheduleTarget(null)}>
               Cancel

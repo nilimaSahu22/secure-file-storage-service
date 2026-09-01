@@ -32,7 +32,8 @@ export function PortalAppointmentsClient({ appointments, providers }: PortalAppo
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [providerId, setProviderId] = useState(providers[0]?.id ?? "");
-  const [scheduledAt, setScheduledAt] = useState("");
+  const [preferredDate, setPreferredDate] = useState("");
+  const [preferredTime, setPreferredTime] = useState("");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,11 +45,12 @@ export function PortalAppointmentsClient({ appointments, providers }: PortalAppo
     try {
       await requestAppointmentAction({
         providerId,
-        scheduledAt: new Date(scheduledAt).toISOString(),
+        scheduledAt: new Date(`${preferredDate}T${preferredTime}`).toISOString(),
         reason: reason.trim() || undefined,
       });
       setOpen(false);
-      setScheduledAt("");
+      setPreferredDate("");
+      setPreferredTime("");
       setReason("");
       router.refresh();
     } catch {
@@ -95,14 +97,28 @@ export function PortalAppointmentsClient({ appointments, providers }: PortalAppo
               </option>
             ))}
           </Select>
-          <Input
-            id="request-datetime"
-            type="datetime-local"
-            label="Preferred date & time"
-            required
-            value={scheduledAt}
-            onChange={(e) => setScheduledAt(e.target.value)}
-          />
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Input
+                id="request-date"
+                type="date"
+                label="Preferred date"
+                required
+                value={preferredDate}
+                onChange={(e) => setPreferredDate(e.target.value)}
+              />
+            </div>
+            <div className="flex-1">
+              <Input
+                id="request-time"
+                type="time"
+                label="Preferred time"
+                required
+                value={preferredTime}
+                onChange={(e) => setPreferredTime(e.target.value)}
+              />
+            </div>
+          </div>
           <Input
             id="request-reason"
             label="Reason (optional)"
