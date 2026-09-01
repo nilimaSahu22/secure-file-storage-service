@@ -41,6 +41,13 @@ function toLocalInputValue(date: Date): string {
   return local.toISOString().slice(0, 16);
 }
 
+// A <input type="datetime-local"> value ("2026-09-05T14:30") carries no timezone.
+// Resolve it to an absolute instant here in the browser, where the user's timezone
+// is known, so the server stores exactly the wall-clock time that was picked.
+function localInputToISO(value: string): string {
+  return new Date(value).toISOString();
+}
+
 export function AppointmentsClient({ appointments, patients, providers }: AppointmentsClientProps) {
   const [bookOpen, setBookOpen] = useState(false);
   const [rescheduleTarget, setRescheduleTarget] = useState<AppointmentRow | null>(null);
@@ -56,7 +63,7 @@ export function AppointmentsClient({ appointments, patients, providers }: Appoin
     e.preventDefault();
     setSubmitting(true);
     try {
-      await bookAppointmentAction({ patientId, providerId, scheduledAt, reason });
+      await bookAppointmentAction({ patientId, providerId, scheduledAt: localInputToISO(scheduledAt), reason });
       setBookOpen(false);
       setScheduledAt("");
       setReason("");
@@ -70,7 +77,7 @@ export function AppointmentsClient({ appointments, patients, providers }: Appoin
     if (!rescheduleTarget) return;
     setSubmitting(true);
     try {
-      await rescheduleAppointmentAction(rescheduleTarget.id, rescheduleAt);
+      await rescheduleAppointmentAction(rescheduleTarget.id, localInputToISO(rescheduleAt));
       setRescheduleTarget(null);
     } finally {
       setSubmitting(false);

@@ -42,7 +42,11 @@ export function PortalAppointmentsClient({ appointments, providers }: PortalAppo
     setSubmitting(true);
     setError(null);
     try {
-      await requestAppointmentAction({ providerId, scheduledAt, reason: reason.trim() || undefined });
+      await requestAppointmentAction({
+        providerId,
+        scheduledAt: new Date(scheduledAt).toISOString(),
+        reason: reason.trim() || undefined,
+      });
       setOpen(false);
       setScheduledAt("");
       setReason("");
