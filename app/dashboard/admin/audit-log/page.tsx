@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
 import { ScrollText } from "lucide-react";
@@ -27,6 +28,7 @@ export default async function AuditLogPage({
   }
 
   const params = await searchParams;
+  const hasFilters = Boolean(params.actor || params.action || params.from || params.to);
   const logs = await getAuditLogs({
     actorName: params.actor,
     action: params.action,
@@ -50,10 +52,18 @@ export default async function AuditLogPage({
           <Input id="action" name="action" label="Action" defaultValue={params.action} placeholder="e.g. login.success" />
           <Input id="from" name="from" type="date" label="From" defaultValue={params.from} />
           <Input id="to" name="to" type="date" label="To" defaultValue={params.to} />
-          <div className="sm:col-span-4">
+          <div className="flex items-center gap-2 sm:col-span-4">
             <Button type="submit" size="sm">
               Apply filters
             </Button>
+            {hasFilters && (
+              <Link
+                href="/dashboard/admin/audit-log"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Clear filters
+              </Link>
+            )}
           </div>
         </form>
       </Card>
