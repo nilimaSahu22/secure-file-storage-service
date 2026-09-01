@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAnthropicClient, getModel } from "@/lib/ai/client";
 import { buildDocumentContext, extractCitedFileIds, GROUNDED_CHAT_SYSTEM_PROMPT } from "@/lib/ai/groundedChat";
+import { buildChartContext } from "@/lib/ai/chartContext";
+import { getPatientById } from "@/lib/services/patients";
 
 export const dynamic = "force-dynamic";
 
@@ -34,11 +36,8 @@ export async function POST(request: NextRequest) {
   const actorType: ChatActorType = session.user.type === "patient" ? ChatActorType.PATIENT : ChatActorType.DOCTOR;
   const staffId = session.user.type === "staff" ? session.user.id : undefined;
 
-  const [files, history] = await Promise.all([
-    prisma.medicalFile.findMany({
-      where: { patientId },
-      select: { id: true, fileName: true, category: true, extractedText: true },
-    }),
+  const [patient, history] = await Promise.all([
+    getPatientById(patientId),
     prisma.chatMessage.findMany({
       where: { patientId, actorType },
       orderBy: { createdAt: "asc" },
@@ -46,7 +45,12 @@ export async function POST(request: NextRequest) {
     }),
   ]);
 
-  const { context, documents } = buildDocumentContext(files);
+  if (!patient) {
+    return NextResponse.json({ error: "NotFound" }, { status: 404 });
+  }
+
+  const chartContext = buildChartContext(patient);
+  const { context, documents } = buildDocumentContext(patient.files);
 
   await prisma.chatMessage.create({
     data: { patientId, actorType, staffId, role: "user", content },
@@ -61,7 +65,7 @@ export async function POST(request: NextRequest) {
       max_tokens: 512,
       system: `${GROUNDED_CHAT_SYSTEM_PROMPT}${
         language ? `\n\nThe user's spoken question was detected as language "${language}". Reply in that language.` : ""
-      }\n\nDocuments:\n${context}`,
+      }\n\nPatient chart:\n${chartContext}\n\nDocuments:\n${context}`,
       messages: [
         ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
         { role: "user" as const, content },
