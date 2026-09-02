@@ -3,7 +3,7 @@
 import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { FolderLock, Plus, Download, Loader2 } from "lucide-react";
+import { FolderLock, Plus, Download, Loader2, Eye, X } from "lucide-react";
 import type { Department, MedicalFile } from "@prisma/client";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -31,6 +31,8 @@ export function FilesSection({ patientId, files, defaultDepartment, allowDepartm
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ file: MedicalFile; url: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function onUpload(e: FormEvent) {
@@ -110,6 +112,18 @@ export function FilesSection({ patientId, files, defaultDepartment, allowDepartm
     }
   }
 
+  async function onPreview(file: MedicalFile) {
+    setPreviewingId(file.id);
+    try {
+      const res = await fetch(`/api/files/${file.id}/download`);
+      if (!res.ok) return;
+      const { url } = await res.json();
+      setPreview({ file, url });
+    } finally {
+      setPreviewingId(null);
+    }
+  }
+
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
@@ -138,14 +152,24 @@ export function FilesSection({ patientId, files, defaultDepartment, allowDepartm
                   <span>{format(f.createdAt, "MMM d, yyyy")}</span>
                 </div>
               </div>
-              <button
-                onClick={() => onDownload(f.id)}
-                disabled={downloadingId === f.id}
-                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
-              >
-                {downloadingId === f.id ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-                Download
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={() => onPreview(f)}
+                  disabled={previewingId === f.id}
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  {previewingId === f.id ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />}
+                  Preview
+                </button>
+                <button
+                  onClick={() => onDownload(f.id)}
+                  disabled={downloadingId === f.id}
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                >
+                  {downloadingId === f.id ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                  Download
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -204,6 +228,57 @@ export function FilesSection({ patientId, files, defaultDepartment, allowDepartm
           </div>
         </form>
       </Modal>
+
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-slate-900/60 p-4 sm:p-8"
+          onClick={() => setPreview(null)}
+        >
+          <div
+            className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <p className="truncate text-sm font-medium text-slate-900">{preview.file.fileName}</p>
+              <div className="flex shrink-0 items-center gap-1">
+                <a
+                  href={preview.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                >
+                  <Download size={13} /> Download
+                </a>
+                <button
+                  onClick={() => setPreview(null)}
+                  aria-label="Close preview"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 bg-slate-50">
+              {preview.file.mimeType === "application/pdf" || preview.file.mimeType.startsWith("text/") ? (
+                <iframe src={preview.url} title={preview.file.fileName} className="h-full w-full" />
+              ) : preview.file.mimeType.startsWith("image/") ? (
+                <div className="flex h-full items-center justify-center p-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={preview.url}
+                    alt={preview.file.fileName}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center p-8 text-center text-sm text-slate-500">
+                  Preview isn&apos;t available for this file type. Use Download to open it.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
