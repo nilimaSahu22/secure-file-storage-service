@@ -107,6 +107,55 @@ enum Department {
   EMERGENCY
 }
 
+enum DocumentRequestStatus {
+  PENDING
+  FULFILLED
+  CANCELLED
+}
+
+model AssistantThread {
+  id               String             @id @default(uuid())
+  ownerType        String
+  ownerId          String
+  title            String             @default("New conversation")
+  focusedPatientId String?
+  archived         Boolean            @default(false)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  messages         AssistantMessage[]
+
+  @@index([ownerType, ownerId, archived])
+}
+
+model AssistantMessage {
+  id           String          @id @default(uuid())
+  threadId     String
+  thread       AssistantThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role         String
+  content      String          @db.Text
+  citedFileIds String[]        @default([])
+  actions      Json?
+  createdAt    DateTime        @default(now())
+
+  @@index([threadId])
+}
+
+model DocumentRequest {
+  id                String                @id @default(uuid())
+  patientId         String
+  patient           Patient               @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  requestedById     String
+  requestedBy       StaffUser             @relation(fields: [requestedById], references: [id])
+  documentType      String
+  description       String
+  dueAt             DateTime?
+  status            DocumentRequestStatus @default(PENDING)
+  fulfilledByFileId String?
+  createdAt         DateTime              @default(now())
+
+  @@index([patientId, status])
+}
+
 model StaffUser {
   id           String      @id @default(uuid())
   name         String
@@ -118,13 +167,14 @@ model StaffUser {
   notes                 ClinicalNote[]
   appointments          Appointment[]
   tasksAssigned         Task[]
-  referralsFrom         Referral[]     @relation("ReferralFrom")
-  referralsTo           Referral[]     @relation("ReferralTo")
+  referralsFrom         Referral[]        @relation("ReferralFrom")
+  referralsTo           Referral[]        @relation("ReferralTo")
   uploadedFiles         MedicalFile[]
   chatMessages          ChatMessage[]
-  visitsAuthored        Visit[]        @relation("VisitAuthor")
-  visitsSigned          Visit[]        @relation("VisitSigner")
-  prescribedMedications Medication[]   @relation("MedicationPrescriber")
+  visitsAuthored        Visit[]           @relation("VisitAuthor")
+  visitsSigned          Visit[]           @relation("VisitSigner")
+  prescribedMedications Medication[]      @relation("MedicationPrescriber")
+  documentRequests      DocumentRequest[]
 }
 
 model Patient {
@@ -139,24 +189,25 @@ model Patient {
   portalPasswordHash String?
   createdAt          DateTime @default(now())
 
-  medications    Medication[]
-  allergies      Allergy[]
-  vitals         VitalSign[]
-  testResults    TestResult[]
-  notes          ClinicalNote[]
-  appointments   Appointment[]
-  visits         Visit[]
-  prescriptions  Prescription[]
-  visitSummaries PatientVisitSummary[]
-  followUpItems  FollowUpItem[]
-  trendFlags     TrendFlag[]
-  tasks          Task[]
-  priorAuths     PriorAuthorization[]
-  referrals      Referral[]
-  chartSummaries ChartSummary[]
-  alerts         ClinicalAlert[]
-  files          MedicalFile[]
-  chatMessages   ChatMessage[]
+  medications      Medication[]
+  allergies        Allergy[]
+  vitals           VitalSign[]
+  testResults      TestResult[]
+  notes            ClinicalNote[]
+  appointments     Appointment[]
+  visits           Visit[]
+  prescriptions    Prescription[]
+  visitSummaries   PatientVisitSummary[]
+  followUpItems    FollowUpItem[]
+  trendFlags       TrendFlag[]
+  tasks            Task[]
+  priorAuths       PriorAuthorization[]
+  referrals        Referral[]
+  chartSummaries   ChartSummary[]
+  alerts           ClinicalAlert[]
+  files            MedicalFile[]
+  chatMessages     ChatMessage[]
+  documentRequests DocumentRequest[]
 }
 
 model Medication {

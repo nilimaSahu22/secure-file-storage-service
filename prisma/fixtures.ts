@@ -223,6 +223,9 @@ const NOTES = [
 
 export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   // Delete in FK-safe order (children before parents).
+  await prisma.assistantMessage.deleteMany();
+  await prisma.assistantThread.deleteMany();
+  await prisma.documentRequest.deleteMany();
   await prisma.codingSuggestion.deleteMany();
   await prisma.task.deleteMany();
   await prisma.trendFlag.deleteMany();

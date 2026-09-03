@@ -14,6 +14,7 @@ import {
   ScrollText,
   Workflow,
   BookOpen,
+  Sparkles,
   Menu,
   X,
   LogOut,
@@ -30,6 +31,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Patients", icon: Users, roles: ["DOCTOR", "NURSE", "ADMIN"] },
+  { href: "/dashboard/assistant", label: "Assistant", icon: Sparkles, roles: ["DOCTOR", "NURSE", "ADMIN"] },
   { href: "/dashboard/appointments", label: "Appointments", icon: CalendarDays, roles: ["DOCTOR", "NURSE", "ADMIN"] },
   { href: "/dashboard/tasks", label: "Task Queue", icon: ListChecks, roles: ["DOCTOR", "NURSE", "ADMIN"] },
   { href: "/dashboard/prior-auth", label: "Prior Auth", icon: FileClock, roles: ["DOCTOR", "NURSE", "ADMIN"] },
