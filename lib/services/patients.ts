@@ -31,7 +31,16 @@ export function getPatientById(id: string) {
       testResults: { orderBy: { recordedAt: "desc" } },
       notes: {
         orderBy: { createdAt: "desc" },
-        include: { author: true, codingSuggestions: true },
+        include: {
+          author: true,
+          codingSuggestions: true,
+          visit: {
+            include: {
+              signedBy: true,
+              prescription: { include: { items: { orderBy: { sortOrder: "asc" } } } },
+            },
+          },
+        },
       },
       appointments: { orderBy: { scheduledAt: "desc" }, include: { provider: true } },
       tasks: { orderBy: { createdAt: "desc" }, include: { assignedTo: true } },

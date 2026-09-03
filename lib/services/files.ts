@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { Department, MedicalFile } from "@prisma/client";
@@ -135,6 +135,39 @@ async function extractPdfText(storageKey: string): Promise<string | null> {
   } finally {
     await parser.destroy();
   }
+}
+
+/** Upload a server-generated object (e.g. a rendered PDF) straight to S3. */
+export async function uploadServerObject({
+  key,
+  body,
+  contentType,
+}: {
+  key: string;
+  body: Buffer;
+  contentType: string;
+}): Promise<void> {
+  const env = getS3Env();
+  const client = getS3Client();
+  await client.send(
+    new PutObjectCommand({
+      Bucket: env.AWS_S3_BUCKET,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+      ServerSideEncryption: "AES256",
+    })
+  );
+}
+
+/** Download an object's raw bytes from S3. */
+export async function getObjectBytes(storageKey: string): Promise<Buffer> {
+  const env = getS3Env();
+  const client = getS3Client();
+  const response = await client.send(new GetObjectCommand({ Bucket: env.AWS_S3_BUCKET, Key: storageKey }));
+  if (!response.Body) throw new Error("Empty object body");
+  const bytes = await response.Body.transformToByteArray();
+  return Buffer.from(bytes);
 }
 
 export function listPatientFiles(patientId: string) {

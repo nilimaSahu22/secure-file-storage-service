@@ -67,18 +67,19 @@ export function StartVisitClient({ patient, staff }: StartVisitClientProps) {
     setGenerating(true);
     setError(null);
     try {
-      const res = await fetch("/api/generate-note", {
+      const res = await fetch("/api/visits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ patientId: patient.id, authorId, transcript }),
       });
       if (!res.ok) {
-        setError("Could not generate note. Please try again.");
+        setError("Could not generate the visit note. Please try again.");
         return;
       }
-      router.push(`/dashboard/patients/${patient.id}`);
+      const { visitId } = await res.json();
+      router.push(`/dashboard/patients/${patient.id}/visit/${visitId}/review`);
     } catch {
-      setError("Could not generate note. Please try again.");
+      setError("Could not generate the visit note. Please try again.");
     } finally {
       setGenerating(false);
     }
