@@ -60,7 +60,9 @@ export function AiChatPanel({
   const [voiceReplies, setVoiceReplies] = useState(true);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [loadingSpeechId, setLoadingSpeechId] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [speechNotice, setSpeechNotice] = useState<string | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   useEffect(() => {
     try {
@@ -72,12 +74,29 @@ export function AiChatPanel({
     }
   }, []);
 
-  const stopSpeaking = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current = null;
+  // Must be called from inside a user gesture (mic tap, send, play button) so the
+  // AudioContext is "unlocked" — later playback after the async Claude + TTS calls
+  // would otherwise be blocked by the browser's autoplay policy.
+  const primeAudio = useCallback(() => {
+    try {
+      if (!audioCtxRef.current) {
+        const Ctx: typeof AudioContext | undefined =
+          window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (Ctx) audioCtxRef.current = new Ctx();
+      }
+      void audioCtxRef.current?.resume();
+    } catch {
+      /* ignore */
     }
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
+    try {
+      sourceRef.current?.stop();
+    } catch {
+      /* already stopped */
+    }
+    sourceRef.current = null;
     setSpeakingId(null);
     setLoadingSpeechId(null);
   }, []);
@@ -85,7 +104,15 @@ export function AiChatPanel({
   const speak = useCallback(
     async (messageId: string, text: string) => {
       stopSpeaking();
+      setSpeechNotice(null);
       setLoadingSpeechId(messageId);
+      primeAudio();
+      const ctx = audioCtxRef.current;
+      if (!ctx) {
+        setLoadingSpeechId(null);
+        setSpeechNotice("Audio isn't supported in this browser.");
+        return;
+      }
       try {
         const res = await fetch("/api/speak", {
           method: "POST",
@@ -94,32 +121,34 @@ export function AiChatPanel({
         });
         if (!res.ok) {
           setLoadingSpeechId(null);
+          setSpeechNotice(
+            res.status === 503
+              ? "Spoken replies aren't configured for this environment."
+              : "Couldn't generate the spoken reply."
+          );
           return;
         }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audioRef.current = audio;
-        audio.onended = () => {
-          URL.revokeObjectURL(url);
+        const buffer = await res.arrayBuffer();
+        const decoded = await ctx.decodeAudioData(buffer);
+        stopSpeaking();
+        const source = ctx.createBufferSource();
+        source.buffer = decoded;
+        source.connect(ctx.destination);
+        source.onended = () => {
           setSpeakingId(null);
-          audioRef.current = null;
+          sourceRef.current = null;
         };
-        audio.onerror = () => {
-          URL.revokeObjectURL(url);
-          setSpeakingId(null);
-          setLoadingSpeechId(null);
-          audioRef.current = null;
-        };
+        sourceRef.current = source;
         setLoadingSpeechId(null);
         setSpeakingId(messageId);
-        await audio.play();
+        source.start();
       } catch {
         setLoadingSpeechId(null);
         setSpeakingId(null);
+        setSpeechNotice("Couldn't play the spoken reply.");
       }
     },
-    [stopSpeaking]
+    [primeAudio, stopSpeaking]
   );
 
   // Stop any playback when the panel unmounts (sidebar/page close via the parent).
@@ -197,10 +226,12 @@ export function AiChatPanel({
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    primeAudio();
     sendMessage(input);
   }
 
   function onMicClick() {
+    primeAudio();
     if (voice.recording) voice.stop();
     else voice.start();
   }
@@ -340,6 +371,7 @@ export function AiChatPanel({
             )}
             {error && <p className="text-xs text-red-600">{error}</p>}
             {voice.error && <p className="text-xs text-red-600">{voice.error}</p>}
+            {speechNotice && <p className="text-xs text-slate-400">{speechNotice}</p>}
           </div>
 
           {(voice.recording || voice.transcribing) && (

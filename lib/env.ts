@@ -62,8 +62,8 @@ const deepgramEnvSchema = z.object({
   // Override to "nova-3-medical" for English-only visits with stronger clinical vocab.
   DEEPGRAM_MODEL: z.string().min(1).default("nova-3"),
   // Deepgram Aura voice used to speak the assistant's reply when a question was
-  // asked by voice. English voice by default.
-  DEEPGRAM_TTS_MODEL: z.string().min(1).default("aura-2-thalia-en"),
+  // asked by voice. Aura-1 English voice by default (widest account availability).
+  DEEPGRAM_TTS_MODEL: z.string().min(1).default("aura-asteria-en"),
 });
 
 export class DeepgramNotConfiguredError extends Error {
