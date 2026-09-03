@@ -11,6 +11,7 @@ import { MedicationsSection } from "@/components/chart/MedicationsSection";
 import { VitalsSection } from "@/components/chart/VitalsSection";
 import { NotesSection } from "@/components/chart/NotesSection";
 import { FollowUpsSection } from "@/components/chart/FollowUpsSection";
+import { TrendFlagsCard } from "@/components/chart/TrendFlagsCard";
 import { TasksSection } from "@/components/chart/TasksSection";
 import { PriorAuthSection } from "@/components/chart/PriorAuthSection";
 import { ReferralsSection } from "@/components/chart/ReferralsSection";
@@ -95,6 +96,8 @@ export function UnifiedChartView({ patient, staff, currentStaffDepartment }: Uni
             </div>
           </Card>
         )}
+
+        {patient.trendFlags.length > 0 && <TrendFlagsCard flags={patient.trendFlags} />}
 
         {patient.chartSummaries.length > 0 && (
           <Card className="border-blue-200 bg-blue-50">

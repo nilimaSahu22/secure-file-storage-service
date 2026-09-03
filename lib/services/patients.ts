@@ -30,6 +30,7 @@ export function getPatientById(id: string) {
       vitals: { orderBy: { recordedAt: "desc" } },
       testResults: { orderBy: { recordedAt: "desc" }, include: { sourceFile: true } },
       followUpItems: { orderBy: [{ status: "asc" }, { dueAt: "asc" }] },
+      trendFlags: { where: { status: "ACTIVE" }, orderBy: { computedAt: "desc" } },
       notes: {
         orderBy: { createdAt: "desc" },
         include: {

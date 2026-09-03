@@ -51,12 +51,17 @@ const PATIENTS: PatientFixture[] = [
     ],
     allergies: [{ allergen: "Penicillin", reaction: "Hives", severity: AlertSeverity.HIGH }],
     vitals: [
+      { type: "Blood Pressure Systolic", value: "132", daysAgo: 180 },
+      { type: "Blood Pressure Systolic", value: "138", daysAgo: 90 },
+      { type: "Blood Pressure Systolic", value: "144", daysAgo: 30 },
       { type: "Blood Pressure Systolic", value: "148", daysAgo: 3 },
       { type: "Blood Pressure Diastolic", value: "92", daysAgo: 3 },
       { type: "Heart Rate", value: "78", daysAgo: 3 },
       { type: "Glucose", value: "162", daysAgo: 3 },
     ],
     testResults: [
+      { testName: "HbA1c", result: "6.6%", normalRange: "<5.7%", daysAgo: 180 },
+      { testName: "HbA1c", result: "6.9%", normalRange: "<5.7%", daysAgo: 90 },
       { testName: "HbA1c", result: "7.2%", normalRange: "<5.7%", daysAgo: 14 },
       { testName: "Lipid Panel — LDL", result: "138 mg/dL", normalRange: "<100 mg/dL", daysAgo: 14 },
     ],
@@ -220,6 +225,7 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   // Delete in FK-safe order (children before parents).
   await prisma.codingSuggestion.deleteMany();
   await prisma.task.deleteMany();
+  await prisma.trendFlag.deleteMany();
   await prisma.followUpItem.deleteMany();
   await prisma.patientVisitSummary.deleteMany();
   await prisma.prescriptionItem.deleteMany();

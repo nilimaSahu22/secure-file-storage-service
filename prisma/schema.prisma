@@ -89,6 +89,17 @@ enum FollowUpStatus {
   DISMISSED
 }
 
+enum TrendDirection {
+  RISING
+  FALLING
+  FLUCTUATING
+}
+
+enum TrendFlagStatus {
+  ACTIVE
+  DISMISSED
+}
+
 enum Department {
   RADIOLOGY
   OPD
@@ -138,6 +149,7 @@ model Patient {
   prescriptions  Prescription[]
   visitSummaries PatientVisitSummary[]
   followUpItems  FollowUpItem[]
+  trendFlags     TrendFlag[]
   tasks          Task[]
   priorAuths     PriorAuthorization[]
   referrals      Referral[]
@@ -300,6 +312,24 @@ model PrescriptionItem {
   createdAt      DateTime     @default(now())
 
   @@index([prescriptionId])
+}
+
+model TrendFlag {
+  id                   String          @id @default(uuid())
+  patientId            String
+  patient              Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  metric               String
+  direction            TrendDirection
+  severity             AlertSeverity   @default(LOW)
+  window               String
+  dataPoints           Json
+  deterministicSummary String
+  narrative            String?         @db.Text
+  status               TrendFlagStatus @default(ACTIVE)
+  computedAt           DateTime        @default(now())
+
+  @@unique([patientId, metric, direction])
+  @@index([patientId, status])
 }
 
 model FollowUpItem {
