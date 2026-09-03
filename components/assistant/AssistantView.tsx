@@ -16,9 +16,14 @@ import {
   Pencil,
   Archive,
   FileText,
+  X,
+  Check,
+  CircleAlert,
+  Download,
 } from "lucide-react";
 import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
 import { FocusedPatientPicker } from "@/components/assistant/FocusedPatientPicker";
+import type { AssistantMessageView } from "@/lib/services/assistant";
 
 export interface ThreadSummary {
   id: string;
@@ -27,11 +32,20 @@ export interface ThreadSummary {
   archived: boolean;
 }
 
-export interface AssistantMessageView {
+export interface ProposedAction {
+  id: string;
+  tool: string;
+  summary: string;
+  status: "proposed" | "done" | "failed";
+  result?: string;
+}
+
+interface MessageState {
   id: string;
   role: "user" | "assistant";
   content: string;
-  citedFileIds: string[];
+  citedFiles: { id: string; fileName: string }[];
+  actions: ProposedAction[];
 }
 
 interface AssistantViewProps {
@@ -40,6 +54,16 @@ interface AssistantViewProps {
   activeThreadId: string | null;
   initialMessages: AssistantMessageView[];
   focusedPatient: { id: string; name: string } | null;
+}
+
+function toState(m: AssistantMessageView): MessageState {
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    citedFiles: m.citedFiles ?? [],
+    actions: (Array.isArray(m.actions) ? (m.actions as ProposedAction[]) : []) ?? [],
+  };
 }
 
 export function AssistantView({
@@ -54,7 +78,7 @@ export function AssistantView({
 
   const [threads, setThreads] = useState<ThreadSummary[]>(initialThreads);
   const [threadId, setThreadId] = useState<string | null>(activeThreadId);
-  const [messages, setMessages] = useState<AssistantMessageView[]>(initialMessages);
+  const [messages, setMessages] = useState<MessageState[]>(initialMessages.map(toState));
   const [focusedPatient, setFocusedPatient] = useState(initialFocusedPatient);
 
   const [input, setInput] = useState("");
@@ -63,6 +87,9 @@ export function AssistantView({
   const [railOpen, setRailOpen] = useState(true);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ fileName: string; url: string } | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const askedByVoiceRef = useRef(false);
@@ -170,14 +197,7 @@ export function AssistantView({
       if (!res.ok) return;
       const data = await res.json();
       setThreadId(id);
-      setMessages(
-        (data.messages ?? []).map((m: AssistantMessageView) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          citedFileIds: m.citedFileIds ?? [],
-        }))
-      );
+      setMessages((data.messages ?? []).map(toState));
       const t: ThreadSummary | undefined = threads.find((x) => x.id === id);
       setFocusedPatient(
         t?.focusedPatientId ? { id: t.focusedPatientId, name: "" } : null
@@ -216,7 +236,7 @@ export function AssistantView({
 
     setMessages((prev) => [
       ...prev,
-      { id: `local-${Date.now()}`, role: "user", content: text, citedFileIds: [] },
+      { id: `local-${Date.now()}`, role: "user", content: text, citedFiles: [], actions: [] },
     ]);
     setInput("");
     setError(null);
@@ -247,7 +267,8 @@ export function AssistantView({
           id: data.messageId,
           role: "assistant",
           content: data.reply,
-          citedFileIds: data.citedFileIds ?? [],
+          citedFiles: data.citedFiles ?? [],
+          actions: (data.actions ?? []) as ProposedAction[],
         },
       ]);
       if (isNew) {
@@ -268,6 +289,46 @@ export function AssistantView({
       setError("Could not get a response. Please try again.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function resolveAction(messageId: string, action: ProposedAction, cancel: boolean) {
+    if (!threadId || confirmingId) return;
+    setConfirmingId(action.id);
+    try {
+      const res = await fetch("/api/assistant/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId, actionId: action.id, cancel }),
+      });
+      const data = await res.json().catch(() => null);
+      const status: ProposedAction["status"] = cancel ? "failed" : data?.ok ? "done" : "failed";
+      const result = cancel ? "Dismissed." : (data?.message ?? "");
+      setMessages((prev) => {
+        const next = prev.map((m) =>
+          m.id === messageId
+            ? { ...m, actions: m.actions.map((a) => (a.id === action.id ? { ...a, status, result } : a)) }
+            : m
+        );
+        if (!cancel && data?.message) {
+          next.push({ id: `local-${Date.now()}`, role: "assistant", content: data.message, citedFiles: [], actions: [] });
+        }
+        return next;
+      });
+    } finally {
+      setConfirmingId(null);
+    }
+  }
+
+  async function openPreview(fileId: string, fileName: string) {
+    setPreviewingId(fileId);
+    try {
+      const res = await fetch(`/api/files/${fileId}/download`);
+      if (!res.ok) return;
+      const { url } = await res.json();
+      setPreview({ fileName, url });
+    } finally {
+      setPreviewingId(null);
     }
   }
 
@@ -425,18 +486,65 @@ export function AssistantView({
                       )}
                     </button>
                   )}
-                  {m.citedFileIds.length > 0 && (
+                  {m.citedFiles.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {m.citedFileIds.map((fid) => (
-                        <span
-                          key={fid}
-                          className="flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700"
+                      {m.citedFiles.map((f) => (
+                        <button
+                          key={f.id}
+                          onClick={() => openPreview(f.id, f.fileName)}
+                          disabled={previewingId === f.id}
+                          className="flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-100"
                         >
-                          <FileText size={10} /> document
-                        </span>
+                          {previewingId === f.id ? (
+                            <Loader2 size={10} className="animate-spin" />
+                          ) : (
+                            <FileText size={10} />
+                          )}
+                          {f.fileName}
+                        </button>
                       ))}
                     </div>
                   )}
+                  {m.actions.map((a) => (
+                    <div
+                      key={a.id}
+                      className={`mt-2.5 rounded-lg border px-3 py-2.5 text-sm ${
+                        a.status === "done"
+                          ? "border-green-200 bg-green-50"
+                          : a.status === "failed"
+                            ? "border-slate-200 bg-slate-50"
+                            : "border-blue-200 bg-blue-50"
+                      }`}
+                    >
+                      <p className="flex items-start gap-1.5 text-slate-800">
+                        {a.status === "done" ? (
+                          <Check size={14} className="mt-0.5 shrink-0 text-green-600" />
+                        ) : a.status === "failed" ? (
+                          <CircleAlert size={14} className="mt-0.5 shrink-0 text-slate-400" />
+                        ) : null}
+                        {a.status === "done" ? a.result || a.summary : a.summary}
+                      </p>
+                      {a.status === "proposed" && (
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            onClick={() => resolveAction(m.id, a, false)}
+                            disabled={confirmingId === a.id}
+                            className="flex items-center gap-1 rounded-md bg-[#2f66ea] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2554c7] disabled:bg-[#a8c0f5]"
+                          >
+                            {confirmingId === a.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => resolveAction(m.id, a, true)}
+                            disabled={confirmingId === a.id}
+                            className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )
             )}
@@ -510,6 +618,49 @@ export function AssistantView({
           </button>
         </form>
       </div>
+
+      {preview && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-slate-900/60 p-4 sm:p-8"
+          onClick={() => setPreview(null)}
+        >
+          <div
+            className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <p className="truncate text-sm font-medium text-slate-900">{preview.fileName}</p>
+              <div className="flex shrink-0 items-center gap-1">
+                <a
+                  href={preview.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                >
+                  <Download size={13} /> Download
+                </a>
+                <button
+                  onClick={() => setPreview(null)}
+                  aria-label="Close preview"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 bg-slate-50">
+              {/\.(png|jpe?g|gif|webp)$/i.test(preview.fileName) ? (
+                <div className="flex h-full items-center justify-center p-4">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={preview.url} alt={preview.fileName} className="max-h-full max-w-full object-contain" />
+                </div>
+              ) : (
+                <iframe src={preview.url} title={preview.fileName} className="h-full w-full" />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

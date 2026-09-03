@@ -53,6 +53,31 @@ export function getThreadMessages(threadId: string, take = 40) {
     .then((rows) => rows.reverse());
 }
 
+export interface AssistantMessageView {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citedFiles: { id: string; fileName: string }[];
+  actions: unknown;
+}
+
+/** Thread messages shaped for rendering — cited file names resolved, actions passed through. */
+export async function getThreadMessagesForView(threadId: string, take = 40): Promise<AssistantMessageView[]> {
+  const rows = await getThreadMessages(threadId, take);
+  const fileIds = [...new Set(rows.flatMap((r) => r.citedFileIds))];
+  const files = fileIds.length
+    ? await prisma.medicalFile.findMany({ where: { id: { in: fileIds } }, select: { id: true, fileName: true } })
+    : [];
+  const byId = new Map(files.map((f) => [f.id, f.fileName]));
+  return rows.map((m) => ({
+    id: m.id,
+    role: m.role as "user" | "assistant",
+    content: m.content,
+    citedFiles: m.citedFileIds.map((fid) => ({ id: fid, fileName: byId.get(fid) ?? "document" })),
+    actions: m.actions ?? null,
+  }));
+}
+
 export interface AppendMessageInput {
   threadId: string;
   role: "user" | "assistant";

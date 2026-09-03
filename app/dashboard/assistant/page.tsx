@@ -1,8 +1,13 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getPatientBasic } from "@/lib/services/patients";
-import { getThread, getThreadMessages, listThreads } from "@/lib/services/assistant";
-import { AssistantView, type AssistantMessageView, type ThreadSummary } from "@/components/assistant/AssistantView";
+import {
+  getThread,
+  getThreadMessagesForView,
+  listThreads,
+  type AssistantMessageView,
+} from "@/lib/services/assistant";
+import { AssistantView, type ThreadSummary } from "@/components/assistant/AssistantView";
 
 export const dynamic = "force-dynamic";
 
@@ -27,12 +32,7 @@ export default async function StaffAssistantPage({
     if (thread) {
       activeThreadId = thread.id;
       focusedPatientId = thread.focusedPatientId;
-      messages = (await getThreadMessages(thread.id)).map((m) => ({
-        id: m.id,
-        role: m.role as "user" | "assistant",
-        content: m.content,
-        citedFileIds: m.citedFileIds,
-      }));
+      messages = await getThreadMessagesForView(thread.id);
     }
   }
 

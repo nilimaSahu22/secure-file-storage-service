@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import {
   archiveThread,
   getThread,
-  getThreadMessages,
+  getThreadMessagesForView,
   renameThread,
   setThreadFocus,
   type AssistantOwner,
@@ -18,8 +18,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const { id } = await params;
   const thread = await getThread(id, owner);
   if (!thread) return NextResponse.json({ error: "NotFound" }, { status: 404 });
-  const messages = await getThreadMessages(id);
-  return NextResponse.json({ thread, messages });
+  return NextResponse.json({ thread, messages: await getThreadMessagesForView(id) });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
