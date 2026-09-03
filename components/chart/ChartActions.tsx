@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sparkles, Mic, Activity } from "lucide-react";
 import type { StaffUser } from "@prisma/client";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 
 interface ChartActionsProps {
   patientId: string;
@@ -15,6 +16,7 @@ export function ChartActions({ patientId }: ChartActionsProps) {
   const router = useRouter();
   const [summarizing, setSummarizing] = useState(false);
   const [checkingTrends, setCheckingTrends] = useState(false);
+  const [trendNotice, setTrendNotice] = useState<string | null>(null);
 
   async function onSummarize() {
     setSummarizing(true);
@@ -36,7 +38,21 @@ export function ChartActions({ patientId }: ChartActionsProps) {
     setCheckingTrends(true);
     try {
       const res = await fetch(`/api/patients/${patientId}/trend-flags`, { method: "POST" });
-      if (res.ok) router.refresh();
+      if (!res.ok) {
+        setTrendNotice("Couldn't check trends right now. Please try again.");
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (data && data.detectedCount === 0 && data.count === 0) {
+        setTrendNotice(
+          "No trends to show for this patient yet. Trend detection needs at least 3 readings of the " +
+            "same measurement (e.g. blood pressure or a lab value) recorded over time."
+        );
+        return;
+      }
+      router.refresh();
+    } catch {
+      setTrendNotice("Couldn't check trends right now. Please try again.");
     } finally {
       setCheckingTrends(false);
     }
@@ -70,6 +86,15 @@ export function ChartActions({ patientId }: ChartActionsProps) {
         <Mic size={14} />
         Start Visit
       </Button>
+
+      <Modal open={!!trendNotice} onClose={() => setTrendNotice(null)} title="Trends">
+        <p className="text-sm text-slate-600">{trendNotice}</p>
+        <div className="mt-4 flex justify-end">
+          <Button variant="outline" onClick={() => setTrendNotice(null)}>
+            OK
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

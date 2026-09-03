@@ -27,7 +27,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   }
 
   const { id } = await params;
-  const flags = await computeTrendFlags(id);
+  const { flags, detectedCount } = await computeTrendFlags(id);
   const pending = flags.filter((f) => !f.narrative);
 
   if (pending.length > 0) {
@@ -61,5 +61,5 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     metadata: { count: flags.length },
   });
 
-  return NextResponse.json({ count: flags.length });
+  return NextResponse.json({ count: flags.length, detectedCount });
 }
