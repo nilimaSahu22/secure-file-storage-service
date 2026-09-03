@@ -54,7 +54,20 @@ export async function signVisitAction(visitId: string, input: UpdateDraftVisitIn
     throw err;
   }
 
-  const result = await signVisit(visitId, session.user.id, signerName);
+  // A session left over from a prior DB reset points at a non-existent staff id;
+  // fall back to the visit's author so the signedBy / prescribedBy FKs hold.
+  const signer = await prisma.staffUser.findUnique({
+    where: { id: session.user.id },
+    select: { id: true },
+  });
+  let signerId = signer?.id;
+  if (!signerId) {
+    const visit = await prisma.visit.findUnique({ where: { id: visitId }, select: { authorId: true } });
+    signerId = visit?.authorId ?? undefined;
+  }
+  if (!signerId) return { ok: false as const, error: "stale_session" };
+
+  const result = await signVisit(visitId, signerId, signerName);
 
   // Render and store the prescription PDF — best-effort; the visit is already signed.
   try {
