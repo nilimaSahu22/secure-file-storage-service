@@ -61,6 +61,9 @@ const deepgramEnvSchema = z.object({
   // nova-3 supports multilingual transcription and code-switching (language: "multi").
   // Override to "nova-3-medical" for English-only visits with stronger clinical vocab.
   DEEPGRAM_MODEL: z.string().min(1).default("nova-3"),
+  // Deepgram Aura voice used to speak the assistant's reply when a question was
+  // asked by voice. English voice by default.
+  DEEPGRAM_TTS_MODEL: z.string().min(1).default("aura-2-thalia-en"),
 });
 
 export class DeepgramNotConfiguredError extends Error {

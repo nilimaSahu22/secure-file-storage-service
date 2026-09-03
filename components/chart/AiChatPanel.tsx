@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { MessageCircle, Mic, MicOff, Send, FileText, ChevronDown, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { MessageCircle, Mic, MicOff, Send, FileText, ChevronDown, X, Volume2, VolumeX, Loader2, Square } from "lucide-react";
 import type { ChatMessage as PrismaChatMessage, MedicalFile } from "@prisma/client";
 import { Button } from "@/components/ui/Button";
 import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
@@ -53,9 +53,82 @@ export function AiChatPanel({
   const [spokenLanguage, setSpokenLanguage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // When true, the next question in the input box came from the mic — so its
+  // answer should be spoken back rather than just shown as text.
+  const askedByVoiceRef = useRef(false);
+
+  const [voiceReplies, setVoiceReplies] = useState(true);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [loadingSpeechId, setLoadingSpeechId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("chat-voice-replies");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (stored != null) setVoiceReplies(stored === "1");
+    } catch {
+      /* private mode — keep the default */
+    }
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    setSpeakingId(null);
+    setLoadingSpeechId(null);
+  }, []);
+
+  const speak = useCallback(
+    async (messageId: string, text: string) => {
+      stopSpeaking();
+      setLoadingSpeechId(messageId);
+      try {
+        const res = await fetch("/api/speak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        if (!res.ok) {
+          setLoadingSpeechId(null);
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          setSpeakingId(null);
+          audioRef.current = null;
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          setSpeakingId(null);
+          setLoadingSpeechId(null);
+          audioRef.current = null;
+        };
+        setLoadingSpeechId(null);
+        setSpeakingId(messageId);
+        await audio.play();
+      } catch {
+        setLoadingSpeechId(null);
+        setSpeakingId(null);
+      }
+    },
+    [stopSpeaking]
+  );
+
+  // Stop any playback when the panel unmounts (sidebar/page close via the parent).
+  useEffect(() => stopSpeaking, [stopSpeaking]);
+
   const voice = useVoiceInput({
     onTranscript: (text, detectedLanguage) => {
       setSpokenLanguage(detectedLanguage);
+      askedByVoiceRef.current = true;
       setInput((prev) => (prev ? `${prev} ${text}` : text));
     },
   });
@@ -71,6 +144,9 @@ export function AiChatPanel({
   async function sendMessage(text: string) {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
+
+    const askedByVoice = askedByVoiceRef.current;
+    askedByVoiceRef.current = false;
 
     setMessages((prev) => [...prev, { id: `local-${Date.now()}`, role: "user", content: trimmed, citedFileIds: [] }]);
     setInput("");
@@ -94,11 +170,29 @@ export function AiChatPanel({
         ...prev,
         { id: data.id, role: "assistant", content: data.reply, citedFileIds: data.citedFileIds ?? [] },
       ]);
+
+      // Asked by voice → speak the answer back.
+      if (askedByVoice && voiceReplies && typeof data.reply === "string" && data.reply.trim()) {
+        void speak(data.id, data.reply);
+      }
     } catch {
       setError("Could not get a response. Please try again.");
     } finally {
       setSending(false);
     }
+  }
+
+  function toggleVoiceReplies() {
+    setVoiceReplies((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("chat-voice-replies", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      if (!next) stopSpeaking();
+      return next;
+    });
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -134,7 +228,15 @@ export function AiChatPanel({
   return (
     <div className={wrapperClass}>
       {variant === "widget" && (
-        <Button onClick={() => setOpen((o) => !o)} className="w-full sm:w-auto">
+        <Button
+          onClick={() =>
+            setOpen((o) => {
+              if (o) stopSpeaking();
+              return !o;
+            })
+          }
+          className="w-full sm:w-auto"
+        >
           <MessageCircle size={14} />
           Ask AI
           <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
@@ -151,24 +253,30 @@ export function AiChatPanel({
                 <span className="text-[#2f66ea]">✦</span> Ask AI
               </p>
               <p className="mt-0.5 text-[11px] text-slate-500">this chart&apos;s documents only</p>
-              {onClose && (
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Close Ask AI"
-                  className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200 hover:text-slate-600"
-                >
-                  <X size={14} />
-                </button>
-              )}
+              <div className="absolute right-3 top-3 flex items-center gap-1">
+                {voice.supported && <VoiceReplyToggle on={voiceReplies} onToggle={toggleVoiceReplies} />}
+                {onClose && (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Close Ask AI"
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
-            <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
-              <p className="text-sm font-semibold text-slate-900">Ask about {patientName}&apos;s documents</p>
-              <p className="mt-0.5 text-[11px] text-slate-500">
-                Answers only from documents uploaded to this chart. It will say so plainly if a
-                document doesn&apos;t cover your question.
-              </p>
+            <div className="flex items-start justify-between gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Ask about {patientName}&apos;s documents</p>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  Answers only from documents uploaded to this chart. It will say so plainly if a
+                  document doesn&apos;t cover your question.
+                </p>
+              </div>
+              {voice.supported && <VoiceReplyToggle on={voiceReplies} onToggle={toggleVoiceReplies} />}
             </div>
           )}
 
@@ -189,6 +297,24 @@ export function AiChatPanel({
               ) : (
                 <div key={m.id} className="max-w-[90%] text-sm leading-relaxed text-slate-700">
                   {m.content}
+                  {voice.supported && m.content.trim() && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        speakingId === m.id ? stopSpeaking() : void speak(m.id, m.content)
+                      }
+                      aria-label={speakingId === m.id ? "Stop" : "Play aloud"}
+                      className="ml-1.5 inline-flex h-5 w-5 -translate-y-px items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 align-middle"
+                    >
+                      {loadingSpeechId === m.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : speakingId === m.id ? (
+                        <Square size={11} className="fill-current" />
+                      ) : (
+                        <Volume2 size={12} />
+                      )}
+                    </button>
+                  )}
                   {m.citedFileIds.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {m.citedFileIds.map((fid) => (
@@ -231,7 +357,10 @@ export function AiChatPanel({
           <form onSubmit={onSubmit} className="flex items-center gap-2 border-t border-slate-100 p-3">
             <input
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                askedByVoiceRef.current = false;
+                setInput(e.target.value);
+              }}
               placeholder={voice.recording ? "Listening…" : voice.transcribing ? "Transcribing…" : "Ask a question"}
               className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
@@ -257,7 +386,7 @@ export function AiChatPanel({
               <button
                 type="submit"
                 disabled={sending || !input.trim()}
-                aria-label="Send"
+                aria-label="Send message"
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2f66ea] text-white transition-colors hover:bg-[#2554c7] disabled:cursor-not-allowed disabled:bg-[#a8c0f5]"
               >
                 <Send size={14} />
@@ -271,5 +400,22 @@ export function AiChatPanel({
         </div>
       )}
     </div>
+  );
+}
+
+function VoiceReplyToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={on}
+      title={on ? "Spoken replies on (for questions you ask by voice)" : "Spoken replies off"}
+      className={`flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium transition-colors ${
+        on ? "text-[#2f66ea] hover:bg-blue-50" : "text-slate-400 hover:bg-slate-100"
+      }`}
+    >
+      {on ? <Volume2 size={13} /> : <VolumeX size={13} />}
+      <span className="hidden sm:inline">Voice</span>
+    </button>
   );
 }
