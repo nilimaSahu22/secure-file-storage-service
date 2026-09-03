@@ -220,6 +220,7 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   // Delete in FK-safe order (children before parents).
   await prisma.codingSuggestion.deleteMany();
   await prisma.task.deleteMany();
+  await prisma.patientVisitSummary.deleteMany();
   await prisma.prescriptionItem.deleteMany();
   await prisma.prescription.deleteMany();
   await prisma.clinicalNote.deleteMany();
@@ -380,6 +381,24 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
       visitId: haroldVisit.id,
       prescribedById: staffByKey.get("drRamirez")!,
       prescribedAt: haroldVisitSignedAt,
+    },
+  });
+  await prisma.patientVisitSummary.create({
+    data: {
+      visitId: haroldVisit.id,
+      patientId: haroldId,
+      sourceNoteVersion: 1,
+      plainSummary:
+        "You came in to check on your blood pressure. You said you feel a bit better but still get " +
+        "lightheaded in the mornings. Your blood pressure was 128/78 and your kidney test was normal. " +
+        "Your blood pressure is improving with your current medicine. The morning lightheadedness is " +
+        "likely mild. The plan is to keep taking your medicine, get a couple of blood tests, watch your " +
+        "blood pressure at home, cut back on salt, and come back in about 4 weeks.",
+      plainPrescription:
+        "Lisinopril 10mg, one tablet by mouth once a day in the morning with water, ongoing. " +
+        "Tests ordered: a basic metabolic panel and an HbA1c. Advice: eat less salt and check your " +
+        "blood pressure at home each morning, keeping a log. Follow-up: about 4 weeks from now.",
+      generatedAt: haroldVisitSignedAt,
     },
   });
 

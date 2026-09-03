@@ -4,10 +4,11 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { Heart, Home, CalendarDays, FolderLock, MessageCircle, LogOut } from "lucide-react";
+import { Heart, Home, CalendarDays, FolderLock, MessageCircle, Stethoscope, LogOut } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/portal", label: "Home", icon: Home },
+  { href: "/portal/visits", label: "Visits", icon: Stethoscope },
   { href: "/portal/appointments", label: "Appointments", icon: CalendarDays },
   { href: "/portal/documents", label: "Documents", icon: FolderLock },
   { href: "/portal/chat", label: "Messages", icon: MessageCircle },
@@ -38,7 +39,7 @@ export function PortalShell({ patientName, children }: { patientName: string; ch
       </header>
       <nav className="flex gap-1 border-b border-slate-200 bg-white px-6">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href;
+          const active = pathname === href || (href !== "/portal" && pathname.startsWith(`${href}/`));
           return (
             <Link
               key={href}

@@ -147,6 +147,8 @@ export function VisitReviewClient({
         setError("This visit is already signed.");
         return;
       }
+      // Generate the patient-facing summary from the freshly signed record.
+      await fetch(`/api/visits/${visitId}/patient-summary`, { method: "POST" }).catch(() => null);
       router.push(`/dashboard/patients/${patientId}`);
     } catch {
       setError("Could not sign the visit. Please try again.");

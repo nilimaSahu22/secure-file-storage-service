@@ -109,6 +109,7 @@ model Patient {
   appointments   Appointment[]
   visits         Visit[]
   prescriptions  Prescription[]
+  visitSummaries PatientVisitSummary[]
   tasks          Task[]
   priorAuths     PriorAuthorization[]
   referrals      Referral[]
@@ -203,10 +204,11 @@ model Visit {
   prescriptionPdfKey String?
   startedAt          DateTime    @default(now())
 
-  vitals       VitalSign[]
-  note         ClinicalNote?
-  prescription Prescription?
-  medications  Medication[]
+  vitals         VitalSign[]
+  note           ClinicalNote?
+  prescription   Prescription?
+  patientSummary PatientVisitSummary?
+  medications    Medication[]
 
   @@index([patientId])
 }
@@ -265,6 +267,21 @@ model PrescriptionItem {
   createdAt      DateTime     @default(now())
 
   @@index([prescriptionId])
+}
+
+model PatientVisitSummary {
+  id                String   @id @default(uuid())
+  visitId           String   @unique
+  visit             Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  patientId         String
+  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  plainSummary      String   @db.Text
+  plainPrescription String   @db.Text
+  sourceNoteVersion Int
+  stale             Boolean  @default(false)
+  generatedAt       DateTime @default(now())
+
+  @@index([patientId])
 }
 
 model CodingSuggestion {

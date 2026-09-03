@@ -3,6 +3,7 @@ import { VisitStatus } from "@prisma/client";
 import type { DrugAllergyConflict } from "@/lib/clinical/rules";
 import { createMedicationFromPrescriptionItem } from "@/lib/services/medications";
 import { generateFollowUpTasks } from "@/lib/services/autoTasks";
+import { markSummaryStale } from "@/lib/services/patientSummary";
 
 export class VisitLockedError extends Error {
   constructor() {
@@ -147,6 +148,8 @@ export async function updateDraftVisit(id: string, input: UpdateDraftVisitInput)
       });
     }
   });
+
+  await markSummaryStale(id);
 
   return { patientId: visit.patientId };
 }
