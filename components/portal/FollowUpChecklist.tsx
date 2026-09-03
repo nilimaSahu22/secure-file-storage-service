@@ -1,11 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { format } from "date-fns";
-import { ClipboardList, Check, X, Loader2, FlaskConical, Scan, CalendarCheck, FileCheck2, Share2 } from "lucide-react";
+import { ClipboardList, Check, X, Loader2, FlaskConical, Scan, CalendarCheck, FileCheck2, Share2, FileUp } from "lucide-react";
 import type { FollowUpItem } from "@prisma/client";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { completeFollowUpAction, dismissFollowUpAction } from "@/lib/actions/followUps";
+
+export interface PortalDocRequest {
+  id: string;
+  documentType: string;
+  description: string;
+  dueAt: string | null;
+}
 
 const GROUPS: { key: string; label: string; kinds: string[]; icon: typeof Check }[] = [
   { key: "results", label: "Results ready to view", kinds: ["RESULT_AVAILABLE"], icon: FileCheck2 },
@@ -16,10 +24,16 @@ const GROUPS: { key: string; label: string; kinds: string[]; icon: typeof Check 
   { key: "other", label: "Other", kinds: ["OTHER"], icon: ClipboardList },
 ];
 
-export function FollowUpChecklist({ items }: { items: FollowUpItem[] }) {
+export function FollowUpChecklist({
+  items,
+  documentRequests = [],
+}: {
+  items: FollowUpItem[];
+  documentRequests?: PortalDocRequest[];
+}) {
   const [busy, setBusy] = useState<string | null>(null);
 
-  if (items.length === 0) return null;
+  if (items.length === 0 && documentRequests.length === 0) return null;
 
   async function act(id: string, fn: (id: string) => Promise<unknown>) {
     setBusy(id);
@@ -36,6 +50,35 @@ export function FollowUpChecklist({ items }: { items: FollowUpItem[] }) {
         <ClipboardList size={14} /> Reminders
       </CardTitle>
       <div className="flex max-h-[32rem] flex-col gap-4 overflow-y-auto pr-1">
+        {documentRequests.length > 0 && (
+          <div>
+            <p className="mb-1.5 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <FileUp size={11} /> Documents to upload
+            </p>
+            <div className="flex flex-col gap-2">
+              {documentRequests.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900">{r.documentType}</p>
+                    <p className="text-xs text-slate-500">{r.description}</p>
+                    {r.dueAt && (
+                      <p className="text-xs text-slate-400">by {format(new Date(r.dueAt), "MMM d, yyyy")}</p>
+                    )}
+                  </div>
+                  <Link
+                    href={`/portal/documents?type=${encodeURIComponent(r.documentType)}`}
+                    className="shrink-0 rounded-md bg-[#2f66ea] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2554c7]"
+                  >
+                    Upload
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {GROUPS.map((group) => {
           const groupItems = items.filter((i) => group.kinds.includes(i.kind));
           if (groupItems.length === 0) return null;

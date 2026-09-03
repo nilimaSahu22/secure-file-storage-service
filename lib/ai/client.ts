@@ -17,3 +17,7 @@ export function getModel(): string {
 export function getDocModel(): string {
   return getEnv().ANTHROPIC_DOC_MODEL;
 }
+
+export function getAgentModel(): string {
+  return getEnv().ANTHROPIC_AGENT_MODEL;
+}

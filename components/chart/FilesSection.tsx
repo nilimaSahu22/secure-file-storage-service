@@ -3,7 +3,7 @@
 import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { FolderLock, Plus, Download, Loader2, Eye, X } from "lucide-react";
+import { FolderLock, Plus, Download, Loader2, Eye, X, FileUp, Clock, CheckCircle2 } from "lucide-react";
 import type { Department, MedicalFile } from "@prisma/client";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +12,16 @@ import { Select } from "@/components/ui/Select";
 import { Modal } from "@/components/ui/Modal";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/chart/UnifiedChartView";
+import { cancelDocumentRequestAction, createDocumentRequestAction } from "@/lib/actions/documentRequests";
+
+export interface DocumentRequestView {
+  id: string;
+  documentType: string;
+  description: string;
+  status: "PENDING" | "FULFILLED" | "CANCELLED";
+  dueAt: string | null;
+  requestedBy: { name: string } | null;
+}
 
 const DEPARTMENT_OPTIONS: Department[] = ["RADIOLOGY", "OPD", "CARDIOLOGY", "EMERGENCY"];
 const CATEGORY_SUGGESTIONS = ["Lab Report", "Imaging", "Discharge Summary", "Referral", "Other"];
@@ -22,6 +32,8 @@ interface FilesSectionProps {
   defaultDepartment?: Department | null;
   allowDepartment?: boolean;
   canUpload?: boolean;
+  /** Staff view: documents the care team has asked this patient to upload. */
+  documentRequests?: DocumentRequestView[];
 }
 
 export function FilesSection({
@@ -30,6 +42,7 @@ export function FilesSection({
   defaultDepartment,
   allowDepartment = true,
   canUpload = true,
+  documentRequests = [],
 }: FilesSectionProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -41,6 +54,44 @@ export function FilesSection({
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ file: MedicalFile; url: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [reqType, setReqType] = useState("");
+  const [reqDescription, setReqDescription] = useState("");
+  const [reqDue, setReqDue] = useState("");
+  const [reqBusy, setReqBusy] = useState(false);
+  const [cancelingReqId, setCancelingReqId] = useState<string | null>(null);
+
+  async function onRequestDocument(e: FormEvent) {
+    e.preventDefault();
+    if (!reqType.trim() || !reqDescription.trim()) return;
+    setReqBusy(true);
+    try {
+      await createDocumentRequestAction({
+        patientId,
+        documentType: reqType,
+        description: reqDescription,
+        dueAt: reqDue || null,
+      });
+      setRequestOpen(false);
+      setReqType("");
+      setReqDescription("");
+      setReqDue("");
+      router.refresh();
+    } finally {
+      setReqBusy(false);
+    }
+  }
+
+  async function onCancelRequest(id: string) {
+    setCancelingReqId(id);
+    try {
+      await cancelDocumentRequestAction(id);
+      router.refresh();
+    } finally {
+      setCancelingReqId(null);
+    }
+  }
 
   async function onUpload(e: FormEvent) {
     e.preventDefault();
@@ -137,6 +188,11 @@ export function FilesSection({
         <CardTitle className="flex items-center gap-1.5">
           <FolderLock size={14} /> Documents
         </CardTitle>
+        {!canUpload && (
+          <Button size="sm" variant="outline" onClick={() => setRequestOpen(true)}>
+            <FileUp size={14} /> Request document
+          </Button>
+        )}
         {canUpload && (
           <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
             <Plus size={14} /> Upload
@@ -183,6 +239,88 @@ export function FilesSection({
           ))}
         </div>
       )}
+
+      {documentRequests.length > 0 && (
+        <div className="mt-4 border-t border-slate-100 pt-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Requested from patient</p>
+          <div className="flex flex-col gap-2">
+            {documentRequests.map((r) => (
+              <div key={r.id} className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium text-slate-900">{r.documentType}</p>
+                  <p className="text-xs text-slate-500">{r.description}</p>
+                  {r.dueAt && <p className="text-xs text-slate-400">by {format(new Date(r.dueAt), "MMM d, yyyy")}</p>}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {r.status === "FULFILLED" ? (
+                    <Badge tone="green">
+                      <CheckCircle2 size={10} className="mr-1 inline" /> Uploaded
+                    </Badge>
+                  ) : (
+                    <>
+                      <Badge tone="amber">
+                        <Clock size={10} className="mr-1 inline" /> Waiting
+                      </Badge>
+                      <button
+                        onClick={() => onCancelRequest(r.id)}
+                        disabled={cancelingReqId === r.id}
+                        className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Modal open={requestOpen} onClose={() => setRequestOpen(false)} title="Request a document from the patient">
+        <form onSubmit={onRequestDocument} className="flex flex-col gap-3">
+          <Input
+            id="req-type"
+            label="Document type"
+            value={reqType}
+            onChange={(e) => setReqType(e.target.value)}
+            required
+            placeholder="e.g. Cardiology clinic letter"
+            list="req-type-suggestions"
+          />
+          <datalist id="req-type-suggestions">
+            {CATEGORY_SUGGESTIONS.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-slate-700">What you need &amp; why</label>
+            <textarea
+              value={reqDescription}
+              onChange={(e) => setReqDescription(e.target.value)}
+              required
+              rows={2}
+              placeholder="Shown to the patient on their portal."
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+          <Input
+            id="req-due"
+            type="date"
+            label="Needed by (optional)"
+            value={reqDue}
+            onChange={(e) => setReqDue(e.target.value)}
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setRequestOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={reqBusy}>
+              {reqBusy ? "Sending…" : "Send request"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal open={open && canUpload} onClose={() => setOpen(false)} title="Upload Document">
         <form onSubmit={onUpload} className="flex flex-col gap-4">

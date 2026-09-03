@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageCircle, Mic, MicOff, Send, FileText, ChevronDown, X, Volume2, Loader2, Square } from "lucide-react";
+import Link from "next/link";
+import { MessageCircle, Mic, MicOff, Send, FileText, ChevronDown, X, Volume2, Loader2, Square, Maximize2 } from "lucide-react";
 import type { ChatMessage as PrismaChatMessage, MedicalFile } from "@prisma/client";
 import { Button } from "@/components/ui/Button";
 import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
@@ -260,6 +261,12 @@ export function AiChatPanel({
                 <span className="text-[#2f66ea]">✦</span> Ask AI
               </p>
               <p className="mt-0.5 text-[11px] text-slate-500">this chart&apos;s documents only</p>
+              <Link
+                href={`/dashboard/assistant?patient=${patientId}`}
+                className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-[#2f66ea] hover:underline"
+              >
+                <Maximize2 size={10} /> Open full Assistant
+              </Link>
               {onClose && (
                 <button
                   type="button"

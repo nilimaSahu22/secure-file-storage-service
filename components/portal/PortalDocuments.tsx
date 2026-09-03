@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { FolderLock, Plus, Download, Loader2, Eye, X, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 import type { MedicalFile } from "@prisma/client";
@@ -35,8 +35,18 @@ const STATUS_META: Record<string, { label: string; tone: "green" | "amber" | "re
 
 export function PortalDocuments({ patientId, patientName, dateOfBirth, files }: PortalDocumentsProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState("");
+
+  // Deep link from a "Documents to upload" reminder → open the modal with the type filled.
+  useEffect(() => {
+    const type = searchParams.get("type");
+    if (!type) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCategory(type);
+    setOpen(true);
+  }, [searchParams]);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);

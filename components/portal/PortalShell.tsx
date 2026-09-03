@@ -4,14 +4,14 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { Heart, Home, CalendarDays, FolderLock, MessageCircle, Stethoscope, LogOut } from "lucide-react";
+import { Heart, Home, CalendarDays, FolderLock, Sparkles, Stethoscope, LogOut } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/portal", label: "Home", icon: Home },
+  { href: "/portal/assistant", label: "Assistant", icon: Sparkles },
   { href: "/portal/visits", label: "Visits", icon: Stethoscope },
   { href: "/portal/appointments", label: "Appointments", icon: CalendarDays },
   { href: "/portal/documents", label: "Documents", icon: FolderLock },
-  { href: "/portal/chat", label: "Messages", icon: MessageCircle },
 ];
 
 export function PortalShell({ patientName, children }: { patientName: string; children: ReactNode }) {

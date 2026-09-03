@@ -7,6 +7,9 @@ const envSchema = z.object({
   // Model for document-heavy AI (uploaded-file intake checks, extraction). Defaults to
   // the same model as ANTHROPIC_MODEL; override with a stronger model for better accuracy.
   ANTHROPIC_DOC_MODEL: z.string().min(1).default("claude-haiku-4-5-20251001"),
+  // Model for the tool-using Assistant. A stronger model (e.g. claude-sonnet-4-5) is
+  // recommended for reliable multi-tool behaviour.
+  ANTHROPIC_AGENT_MODEL: z.string().min(1).default("claude-haiku-4-5-20251001"),
   ADMIN_RESET_TOKEN: z.string().min(1),
 });
 

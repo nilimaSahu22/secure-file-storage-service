@@ -223,6 +223,9 @@ const NOTES = [
 
 export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   // Delete in FK-safe order (children before parents).
+  await prisma.assistantMessage.deleteMany();
+  await prisma.assistantThread.deleteMany();
+  await prisma.documentRequest.deleteMany();
   await prisma.codingSuggestion.deleteMany();
   await prisma.task.deleteMany();
   await prisma.trendFlag.deleteMany();
@@ -427,6 +430,18 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
         createdAt: daysAgo(1),
       },
     ],
+  });
+  await prisma.documentRequest.create({
+    data: {
+      patientId: haroldId,
+      requestedById: staffByKey.get("drRamirez")!,
+      documentType: "Cardiology clinic letter",
+      description:
+        "Please upload the letter from your recent cardiology appointment so we have their recommendations on file.",
+      dueAt: daysFromNow(14),
+      status: "PENDING",
+      createdAt: haroldVisitSignedAt,
+    },
   });
   await prisma.patientVisitSummary.create({
     data: {

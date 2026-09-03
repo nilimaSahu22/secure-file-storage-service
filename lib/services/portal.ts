@@ -11,6 +11,11 @@ export function getPatientPortalData(patientId: string) {
         where: { status: "OUTSTANDING" },
         orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }],
       },
+      documentRequests: {
+        where: { status: "PENDING" },
+        orderBy: { createdAt: "asc" },
+        include: { requestedBy: { select: { name: true } } },
+      },
       visits: {
         where: { status: "SIGNED" },
         orderBy: { signedAt: "desc" },
