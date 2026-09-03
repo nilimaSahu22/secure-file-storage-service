@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageCircle, Mic, MicOff, Send, FileText, ChevronDown, X, Volume2, VolumeX, Loader2, Square } from "lucide-react";
+import { MessageCircle, Mic, MicOff, Send, FileText, ChevronDown, X, Volume2, Loader2, Square } from "lucide-react";
 import type { ChatMessage as PrismaChatMessage, MedicalFile } from "@prisma/client";
 import { Button } from "@/components/ui/Button";
 import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
@@ -57,27 +57,35 @@ export function AiChatPanel({
   // answer should be spoken back rather than just shown as text.
   const askedByVoiceRef = useRef(false);
 
-  const [voiceReplies, setVoiceReplies] = useState(true);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [loadingSpeechId, setLoadingSpeechId] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [speechNotice, setSpeechNotice] = useState<string | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
 
-  useEffect(() => {
+  // Must be called from inside a user gesture (mic tap, send, play button) so the
+  // AudioContext is "unlocked" — later playback after the async Claude + TTS calls
+  // would otherwise be blocked by the browser's autoplay policy.
+  const primeAudio = useCallback(() => {
     try {
-      const stored = localStorage.getItem("chat-voice-replies");
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (stored != null) setVoiceReplies(stored === "1");
+      if (!audioCtxRef.current) {
+        const Ctx: typeof AudioContext | undefined =
+          window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (Ctx) audioCtxRef.current = new Ctx();
+      }
+      void audioCtxRef.current?.resume();
     } catch {
-      /* private mode — keep the default */
+      /* ignore */
     }
   }, []);
 
   const stopSpeaking = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current = null;
+    try {
+      sourceRef.current?.stop();
+    } catch {
+      /* already stopped */
     }
+    sourceRef.current = null;
     setSpeakingId(null);
     setLoadingSpeechId(null);
   }, []);
@@ -85,7 +93,15 @@ export function AiChatPanel({
   const speak = useCallback(
     async (messageId: string, text: string) => {
       stopSpeaking();
+      setSpeechNotice(null);
       setLoadingSpeechId(messageId);
+      primeAudio();
+      const ctx = audioCtxRef.current;
+      if (!ctx) {
+        setLoadingSpeechId(null);
+        setSpeechNotice("Audio isn't supported in this browser.");
+        return;
+      }
       try {
         const res = await fetch("/api/speak", {
           method: "POST",
@@ -94,32 +110,34 @@ export function AiChatPanel({
         });
         if (!res.ok) {
           setLoadingSpeechId(null);
+          setSpeechNotice(
+            res.status === 503
+              ? "Spoken replies aren't configured for this environment."
+              : "Couldn't generate the spoken reply."
+          );
           return;
         }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audioRef.current = audio;
-        audio.onended = () => {
-          URL.revokeObjectURL(url);
+        const buffer = await res.arrayBuffer();
+        const decoded = await ctx.decodeAudioData(buffer);
+        stopSpeaking();
+        const source = ctx.createBufferSource();
+        source.buffer = decoded;
+        source.connect(ctx.destination);
+        source.onended = () => {
           setSpeakingId(null);
-          audioRef.current = null;
+          sourceRef.current = null;
         };
-        audio.onerror = () => {
-          URL.revokeObjectURL(url);
-          setSpeakingId(null);
-          setLoadingSpeechId(null);
-          audioRef.current = null;
-        };
+        sourceRef.current = source;
         setLoadingSpeechId(null);
         setSpeakingId(messageId);
-        await audio.play();
+        source.start();
       } catch {
         setLoadingSpeechId(null);
         setSpeakingId(null);
+        setSpeechNotice("Couldn't play the spoken reply.");
       }
     },
-    [stopSpeaking]
+    [primeAudio, stopSpeaking]
   );
 
   // Stop any playback when the panel unmounts (sidebar/page close via the parent).
@@ -171,8 +189,8 @@ export function AiChatPanel({
         { id: data.id, role: "assistant", content: data.reply, citedFileIds: data.citedFileIds ?? [] },
       ]);
 
-      // Asked by voice → speak the answer back.
-      if (askedByVoice && voiceReplies && typeof data.reply === "string" && data.reply.trim()) {
+      // Asked by voice → speak the answer back automatically.
+      if (askedByVoice && typeof data.reply === "string" && data.reply.trim()) {
         void speak(data.id, data.reply);
       }
     } catch {
@@ -182,25 +200,14 @@ export function AiChatPanel({
     }
   }
 
-  function toggleVoiceReplies() {
-    setVoiceReplies((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("chat-voice-replies", next ? "1" : "0");
-      } catch {
-        /* ignore */
-      }
-      if (!next) stopSpeaking();
-      return next;
-    });
-  }
-
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    primeAudio();
     sendMessage(input);
   }
 
   function onMicClick() {
+    primeAudio();
     if (voice.recording) voice.stop();
     else voice.start();
   }
@@ -253,30 +260,24 @@ export function AiChatPanel({
                 <span className="text-[#2f66ea]">✦</span> Ask AI
               </p>
               <p className="mt-0.5 text-[11px] text-slate-500">this chart&apos;s documents only</p>
-              <div className="absolute right-3 top-3 flex items-center gap-1">
-                {voice.supported && <VoiceReplyToggle on={voiceReplies} onToggle={toggleVoiceReplies} />}
-                {onClose && (
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    aria-label="Close Ask AI"
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200 hover:text-slate-600"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close Ask AI"
+                  className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
           ) : (
-            <div className="flex items-start justify-between gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Ask about {patientName}&apos;s documents</p>
-                <p className="mt-0.5 text-[11px] text-slate-500">
-                  Answers only from documents uploaded to this chart. It will say so plainly if a
-                  document doesn&apos;t cover your question.
-                </p>
-              </div>
-              {voice.supported && <VoiceReplyToggle on={voiceReplies} onToggle={toggleVoiceReplies} />}
+            <div className="border-b border-slate-100 bg-slate-50 px-4 py-2">
+              <p className="text-sm font-semibold text-slate-900">Ask about {patientName}&apos;s documents</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Answers only from documents uploaded to this chart. It will say so plainly if a
+                document doesn&apos;t cover your question.
+              </p>
             </div>
           )}
 
@@ -340,6 +341,7 @@ export function AiChatPanel({
             )}
             {error && <p className="text-xs text-red-600">{error}</p>}
             {voice.error && <p className="text-xs text-red-600">{voice.error}</p>}
+            {speechNotice && <p className="text-xs text-slate-400">{speechNotice}</p>}
           </div>
 
           {(voice.recording || voice.transcribing) && (
@@ -403,19 +405,3 @@ export function AiChatPanel({
   );
 }
 
-function VoiceReplyToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={on}
-      title={on ? "Spoken replies on (for questions you ask by voice)" : "Spoken replies off"}
-      className={`flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium transition-colors ${
-        on ? "text-[#2f66ea] hover:bg-blue-50" : "text-slate-400 hover:bg-slate-100"
-      }`}
-    >
-      {on ? <Volume2 size={13} /> : <VolumeX size={13} />}
-      <span className="hidden sm:inline">Voice</span>
-    </button>
-  );
-}
