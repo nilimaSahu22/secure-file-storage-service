@@ -86,6 +86,12 @@ export function PortalVisitsList({ visits }: { visits: Visit[] }) {
                     ))}
                   </ul>
                 )}
+                {visit.prescription?.followUpAt && (
+                  <p className="text-sm">
+                    <span className="font-medium text-slate-900">Next follow-up:</span>{" "}
+                    {format(visit.prescription.followUpAt, "MMMM d, yyyy")}
+                  </p>
+                )}
               </div>
             )}
           </Card>

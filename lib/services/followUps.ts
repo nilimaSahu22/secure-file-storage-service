@@ -41,6 +41,17 @@ export async function generateFollowUpsForVisit(visitId: string): Promise<number
   if (visit.prescription.followUpAt) {
     const desc = "Attend your follow-up visit";
     if (!existing.has(`${FollowUpKind.APPOINTMENT}:${desc.toLowerCase()}`)) {
+      // A newer visit sets a new "next appointment" — supersede any earlier
+      // outstanding follow-up appointment so the patient sees only one.
+      await prisma.followUpItem.updateMany({
+        where: {
+          patientId: visit.patientId,
+          kind: FollowUpKind.APPOINTMENT,
+          status: FollowUpStatus.OUTSTANDING,
+          visitId: { not: visitId },
+        },
+        data: { status: FollowUpStatus.DISMISSED },
+      });
       toCreate.push({
         patientId: visit.patientId,
         visitId,

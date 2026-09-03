@@ -20,8 +20,8 @@ const SYSTEM_PROMPT =
   "add advice, warnings, diagnoses, dosing, or follow-up instructions that are not explicitly present. " +
   "Plain prose only, no markdown, no headings. plainSummary: what was discussed and found (subjective, " +
   "objective, assessment, plan) in plain words. plainPrescription: each medicine (what it is, how much, " +
-  "how often, how long), the tests that were ordered, the advice given, and the follow-up date if one " +
-  "was stated.";
+  "how often, how long), the tests that were ordered, and the advice given. " +
+  "Do NOT state or paraphrase the follow-up date anywhere — it is shown to the patient separately.";
 
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -54,8 +54,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
           .join("\n")
       : "- No medications prescribed.") +
     `\nInvestigations ordered: ${rx?.investigations.length ? rx.investigations.join(", ") : "none"}` +
-    `\nAdvice: ${rx?.advice ?? "none"}` +
-    `\nFollow-up date: ${rx?.followUpAt ? rx.followUpAt.toISOString().slice(0, 10) : "none stated"}`;
+    `\nAdvice: ${rx?.advice ?? "none"}`;
 
   try {
     const client = getAnthropicClient();
