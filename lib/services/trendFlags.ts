@@ -64,7 +64,8 @@ export async function computeTrendFlags(patientId: string) {
     });
   }
 
-  return getActiveTrendFlags(patientId);
+  const active = await getActiveTrendFlags(patientId);
+  return { flags: active, detectedCount: detected.length };
 }
 
 export function getActiveTrendFlags(patientId: string) {
