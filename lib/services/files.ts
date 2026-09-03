@@ -1,8 +1,8 @@
-import { randomUUID } from "crypto";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { randomUUID, createHash } from "crypto";
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import type { Department, MedicalFile } from "@prisma/client";
+import { FileSource, FileStatus, type Department, type MedicalFile, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getS3Env } from "@/lib/env";
 
@@ -92,14 +92,6 @@ export async function confirmUpload(input: ConfirmUploadInput): Promise<MedicalF
     orderBy: { version: "desc" },
   });
 
-  let extractedText: string | null = null;
-  if (mimeType === "application/pdf") {
-    extractedText = await extractPdfText(storageKey).catch((err) => {
-      console.error("PDF text extraction failed:", err);
-      return null;
-    });
-  }
-
   return prisma.medicalFile.create({
     data: {
       patientId,
@@ -113,28 +105,179 @@ export async function confirmUpload(input: ConfirmUploadInput): Promise<MedicalF
       department: department ?? null,
       version: previous ? previous.version + 1 : 1,
       previousVersionId: previous?.id,
-      extractedText,
+      status: FileStatus.ACCEPTED,
+      source: FileSource.STAFF,
     },
   });
 }
 
-async function extractPdfText(storageKey: string): Promise<string | null> {
+export class DuplicateFileError extends Error {
+  constructor() {
+    super("This document has already been uploaded.");
+    this.name = "DuplicateFileError";
+  }
+}
+
+export interface CheapCheckResult {
+  ok: boolean;
+  readable: boolean;
+  issues: string[];
+}
+
+// Heuristic, illustrative pre-checks (not a real document validator).
+export function cheapDocumentChecks(bytes: Buffer, mimeType: string): CheapCheckResult {
+  const issues: string[] = [];
+  let readable = true;
+
+  if (bytes.length === 0) {
+    return { ok: false, readable: false, issues: ["The file is empty."] };
+  }
+
+  if (mimeType === "application/pdf") {
+    const head = bytes.subarray(0, 1024).toString("latin1");
+    if (!head.startsWith("%PDF-")) {
+      issues.push("This does not look like a valid PDF.");
+      readable = false;
+    }
+    if (bytes.toString("latin1").includes("/Encrypt")) {
+      issues.push("The PDF appears to be password-protected.");
+      readable = false;
+    }
+  } else if (mimeType === "image/png") {
+    const sig = bytes.subarray(0, 4).toString("hex");
+    if (sig !== "89504e47") {
+      issues.push("This does not look like a valid PNG image.");
+      readable = false;
+    }
+  } else if (mimeType === "image/jpeg") {
+    const sig = bytes.subarray(0, 3).toString("hex");
+    if (sig !== "ffd8ff") {
+      issues.push("This does not look like a valid JPEG image.");
+      readable = false;
+    }
+  }
+
+  return { ok: issues.length === 0, readable, issues };
+}
+
+export interface StageUploadInput {
+  patientId: string;
+  storageKey: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  category: string;
+  source: FileSource;
+  uploadedByStaffId?: string;
+  uploadedByPatient: boolean;
+}
+
+/**
+ * Records an uploaded object as PENDING after cheap integrity + duplicate checks.
+ * The AI intake check (POST /api/files/[id]/check) then accepts/bounces it.
+ */
+export async function stageUpload(input: StageUploadInput): Promise<{ file: MedicalFile; cheap: CheapCheckResult }> {
+  const bytes = await getObjectBytes(input.storageKey);
+  const contentHash = createHash("sha256").update(bytes).digest("hex");
+
+  const duplicate = await prisma.medicalFile.findFirst({
+    where: {
+      patientId: input.patientId,
+      contentHash,
+      status: { in: [FileStatus.ACCEPTED, FileStatus.PENDING] },
+    },
+  });
+  if (duplicate) {
+    await deleteObject(input.storageKey).catch(() => undefined);
+    throw new DuplicateFileError();
+  }
+
+  const cheap = cheapDocumentChecks(bytes, input.mimeType);
+
+  const previous = await prisma.medicalFile.findFirst({
+    where: { patientId: input.patientId, category: input.category },
+    orderBy: { version: "desc" },
+  });
+
+  const file = await prisma.medicalFile.create({
+    data: {
+      patientId: input.patientId,
+      uploadedByStaffId: input.uploadedByStaffId,
+      uploadedByPatient: input.uploadedByPatient,
+      fileName: input.fileName,
+      storageKey: input.storageKey,
+      mimeType: input.mimeType,
+      sizeBytes: input.sizeBytes,
+      category: input.category,
+      version: previous ? previous.version + 1 : 1,
+      previousVersionId: previous?.id,
+      status: FileStatus.PENDING,
+      source: input.source,
+      contentHash,
+    },
+  });
+
+  return { file, cheap };
+}
+
+export interface FileDecisionInput {
+  status: FileStatus;
+  validation?: Prisma.InputJsonValue;
+  documentDate?: Date | null;
+  bounceReason?: string | null;
+  extractedText?: string | null;
+}
+
+export function finalizeFileDecision(fileId: string, input: FileDecisionInput) {
+  return prisma.medicalFile.update({
+    where: { id: fileId },
+    data: {
+      status: input.status,
+      validation: input.validation,
+      documentDate: input.documentDate ?? undefined,
+      bounceReason: input.bounceReason ?? null,
+      extractedText: input.extractedText ?? undefined,
+    },
+  });
+}
+
+export async function deleteObject(storageKey: string): Promise<void> {
+  const env = getS3Env();
+  const client = getS3Client();
+  await client.send(new DeleteObjectCommand({ Bucket: env.AWS_S3_BUCKET, Key: storageKey }));
+}
+
+/** Upload a server-generated object (e.g. a rendered PDF) straight to S3. */
+export async function uploadServerObject({
+  key,
+  body,
+  contentType,
+}: {
+  key: string;
+  body: Buffer;
+  contentType: string;
+}): Promise<void> {
+  const env = getS3Env();
+  const client = getS3Client();
+  await client.send(
+    new PutObjectCommand({
+      Bucket: env.AWS_S3_BUCKET,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+      ServerSideEncryption: "AES256",
+    })
+  );
+}
+
+/** Download an object's raw bytes from S3. */
+export async function getObjectBytes(storageKey: string): Promise<Buffer> {
   const env = getS3Env();
   const client = getS3Client();
   const response = await client.send(new GetObjectCommand({ Bucket: env.AWS_S3_BUCKET, Key: storageKey }));
-  if (!response.Body) return null;
-
+  if (!response.Body) throw new Error("Empty object body");
   const bytes = await response.Body.transformToByteArray();
-  // Imported lazily: pdf-parse/pdfjs-dist reference browser globals that break
-  // module evaluation in serverless runtimes, so only the PDF path pays that cost.
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: Buffer.from(bytes) });
-  try {
-    const result = await parser.getText();
-    return result.text || null;
-  } finally {
-    await parser.destroy();
-  }
+  return Buffer.from(bytes);
 }
 
 export function listPatientFiles(patientId: string) {

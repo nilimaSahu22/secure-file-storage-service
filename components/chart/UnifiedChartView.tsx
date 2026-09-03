@@ -10,6 +10,8 @@ import { ChartShell } from "@/components/chart/ChartShell";
 import { MedicationsSection } from "@/components/chart/MedicationsSection";
 import { VitalsSection } from "@/components/chart/VitalsSection";
 import { NotesSection } from "@/components/chart/NotesSection";
+import { FollowUpsSection } from "@/components/chart/FollowUpsSection";
+import { TrendFlagsCard } from "@/components/chart/TrendFlagsCard";
 import { TasksSection } from "@/components/chart/TasksSection";
 import { PriorAuthSection } from "@/components/chart/PriorAuthSection";
 import { ReferralsSection } from "@/components/chart/ReferralsSection";
@@ -95,6 +97,8 @@ export function UnifiedChartView({ patient, staff, currentStaffDepartment }: Uni
           </Card>
         )}
 
+        {patient.trendFlags.length > 0 && <TrendFlagsCard flags={patient.trendFlags} />}
+
         {patient.chartSummaries.length > 0 && (
           <Card className="border-blue-200 bg-blue-50">
             <CardTitle className="mb-2 flex items-center gap-1.5 text-blue-900">AI Chart Summary</CardTitle>
@@ -122,6 +126,9 @@ export function UnifiedChartView({ patient, staff, currentStaffDepartment }: Uni
                       <p className="text-xs text-slate-500">
                         {t.normalRange ? `Normal: ${t.normalRange}` : "No reference range"}
                       </p>
+                      {t.enteredByAI && (
+                        <p className="mt-0.5 text-xs text-amber-700">From uploaded document — unverified</p>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-slate-900">{t.result}</p>
@@ -160,9 +167,18 @@ export function UnifiedChartView({ patient, staff, currentStaffDepartment }: Uni
           </Card>
         </div>
 
-        <NotesSection patientId={patient.id} notes={patient.notes} staff={staff} />
+        <div id="clinical-notes" className="scroll-mt-20">
+          <NotesSection patientId={patient.id} notes={patient.notes} staff={staff} />
+        </div>
 
-        <FilesSection patientId={patient.id} files={patient.files} defaultDepartment={currentStaffDepartment} />
+        {patient.followUpItems.length > 0 && <FollowUpsSection items={patient.followUpItems} />}
+
+        <FilesSection
+          patientId={patient.id}
+          files={patient.files}
+          defaultDepartment={currentStaffDepartment}
+          canUpload={false}
+        />
 
         <div className="grid grid-cols-1 gap-6 min-[1201px]:grid-cols-2">
           <TasksSection patientId={patient.id} tasks={patient.tasks} staff={staff} />

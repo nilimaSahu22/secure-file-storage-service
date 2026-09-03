@@ -98,23 +98,38 @@ silently fail to persist within one demo. And a long-lived in-memory process wou
 one client's demo data bleed into the next client's session — a real risk in a sales
 context. Postgres + Prisma, reset before each meeting, solves both.
 
-### The three AI features
+### AI features
 
-All three call `claude-haiku-4-5-20251001` (configurable via `ANTHROPIC_MODEL`) from
-server-side route handlers only — the Anthropic client is never instantiated in client
-code, and the API key never reaches the browser.
+All AI calls run from server-side route handlers only — the Anthropic client is never
+instantiated in client code, and the API key never reaches the browser. Most use
+`ANTHROPIC_MODEL` (`claude-haiku-4-5-20251001`); document-heavy features use
+`ANTHROPIC_DOC_MODEL` (same default, override with a stronger model).
 
-- **`POST /api/chart-summary`** — plain-text 3–4 sentence chart summary, triggered by
-  "Summarize Chart" on a patient's Unified Chart View.
-- **`POST /api/generate-note`** — structured-output SOAP note (via
-  `output_config.format` / Zod schema, not free-text parsing), triggered by "Generate
-  Note" on the Start Visit screen. Auto-generates 2–3 rule-based follow-up tasks on
-  save.
-- **`POST /api/suggest-codes`** — structured-output array of 2–3 ICD-10/CPT code
-  suggestions with rationale, triggered by "Suggest Codes" on a saved note.
+- **`POST /api/chart-summary`** — plain-text chart summary ("Summarize Chart").
+- **`POST /api/visits`** — structured-output SOAP note **and** a draft prescription
+  from the visit transcript ("Generate Note" on Start Visit). Creates a DRAFT visit;
+  `POST /api/visits/[id]/regenerate-note` re-runs it from the review screen.
+- **`POST /api/visits/[id]/patient-summary`** — plain-language patient version of a
+  signed visit, generated strictly from the finalized note + prescription.
+- **`POST /api/files/[id]/check`** — reads an uploaded document (PDF/image) and returns
+  type, date, identity match vs the account, legibility, findings, and extracted test
+  results (drives the patient-upload intake check + extraction).
+- **`POST /api/suggest-codes`** — 2–3 ICD-10/CPT code suggestions for a saved note.
+- **`POST /api/patients/[id]/trend-flags`** — a short non-diagnostic narrative on top of
+  deterministically detected vital/lab trends ("Check Trends").
 
-Every AI-generated artifact carries a visible **"AI Preview"** badge in the UI. No
-screen implies AI output is validated for clinical or billing use.
+AI-generated artifacts carry visible labels; no screen implies AI output is validated
+for clinical or billing use.
+
+### Visit record & prescriptions
+
+Recording a visit creates a DRAFT `Visit` with a structured SOAP note and an editable
+`Prescription` (items with dose/route/frequency/duration, investigations, advice,
+follow-up date). The review screen (`/dashboard/patients/[id]/visit/[visitId]/review`)
+edits both with live drug-allergy warnings (reusing `lib/clinical/rules.ts`).
+**Sign & finalize** locks the visit (finalize-once, no amendments), copies prescription
+items into `Medication` rows, renders a prescription PDF (`pdf-lib`, stored in S3), and
+publishes a plain-language patient summary + a follow-up checklist to the portal.
 
 ### Clinical Decision Support
 
@@ -133,12 +148,15 @@ computed from this environment's data.
 
 Real AWS S3 (the user's own bucket — not a mock), via presigned POST uploads
 (`lib/services/files.ts`, `app/api/files/*`): the browser uploads directly to S3, the
-server never proxies file bytes. Re-uploading the same category for a patient creates a
-new versioned `MedicalFile` row (`previousVersionId`/`version`) rather than overwriting.
-PDF uploads are text-extracted server-side (`pdf-parse`) into `extractedText`, which feeds
-the grounded AI chat below. Department-tagged files are only visible to staff in that
-department (or Admins); untagged files are visible org-wide. Downloads go through a
-short-lived presigned GET URL, never a public bucket path.
+server never proxies file bytes. **Uploading is patient-portal only** — the clinician
+Documents card is read-only. Each patient upload is staged as `PENDING`, run through
+cheap integrity + duplicate checks, then one Claude pass (`POST /api/files/[id]/check`,
+reading the file as a `document`/`image` block — no `pdf-parse`) that decides:
+`ACCEPTED` (identity matches, readable), `BOUNCED` (wrong person / not medical — the
+clinician never sees it), or `NEEDS_CLEARER_COPY`. Accepted documents have their text +
+test results extracted in the same pass. Only `ACCEPTED` files feed the grounded chat.
+Re-uploads create a new versioned `MedicalFile` row. Downloads go through a short-lived
+presigned GET URL.
 
 ### Grounded AI Chat (chart + patient portal)
 
@@ -152,10 +170,21 @@ only visible to their own side.
 
 ### Patient Portal
 
-`/portal/*` — a separate, deliberately simpler surface for patients: their own upcoming
-appointments, self-service document upload (same S3 pipeline as the EMR), and grounded
-chat about their own documents. Its own login (`/portal/login`), and its `ChatMessage`
-thread never overlaps with the doctor-side conversation about the same patient.
+`/portal/*` — a separate, deliberately simpler surface for patients: upcoming
+appointments, a **Visits** tab with a plain-language summary and downloadable
+prescription PDF for each signed visit, grouped **reminders** (tests to complete,
+results ready, visit prep — the `FollowUpItem` model), self-service document upload with
+the AI intake check, and grounded chat about their own accepted documents. Its own login
+(`/portal/login`); its `ChatMessage` thread never overlaps with the doctor-side
+conversation.
+
+### Predictive trend flags
+
+`lib/clinical/trends.ts` detects rising/falling/fluctuating trends across a patient's
+historical vitals and labs (illustrative, hardcoded thresholds — not clinically
+validated). "Check Trends" on the chart computes them and adds a short non-diagnostic
+AI narrative. Doctor-facing only, never shown in the portal, and explicitly labelled
+"not a diagnosis or risk score".
 
 ### Departmental Workflows
 

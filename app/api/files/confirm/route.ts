@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { Department } from "@prisma/client";
+import { FileSource, type Department } from "@prisma/client";
 import { auth } from "@/lib/auth";
-import { confirmUpload, assertDepartmentAccess, FileAccessDeniedError } from "@/lib/services/files";
+import {
+  confirmUpload,
+  stageUpload,
+  assertDepartmentAccess,
+  FileAccessDeniedError,
+  DuplicateFileError,
+} from "@/lib/services/files";
 import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +55,30 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    if (session.user.type === "patient") {
+      // Patient uploads are staged as PENDING and then run through the AI intake check.
+      const { file } = await stageUpload({
+        patientId,
+        storageKey,
+        fileName,
+        mimeType,
+        sizeBytes,
+        category,
+        source: FileSource.PATIENT,
+        uploadedByPatient: true,
+      });
+      await logAudit({
+        actorType: "patient",
+        actorId: session.user.id,
+        actorName: session.user.name ?? "Unknown",
+        action: "file.uploaded",
+        targetType: "MedicalFile",
+        targetId: file.id,
+        metadata: { patientId, category, fileName, version: file.version, status: "PENDING" },
+      });
+      return NextResponse.json({ fileId: file.id, status: file.status }, { status: 201 });
+    }
+
     const file = await confirmUpload({
       patientId,
       storageKey,
@@ -57,12 +87,12 @@ export async function POST(request: NextRequest) {
       sizeBytes,
       category,
       department: department ?? null,
-      uploadedByStaffId: session.user.type === "staff" ? session.user.id : undefined,
-      uploadedByPatient: session.user.type === "patient",
+      uploadedByStaffId: session.user.id,
+      uploadedByPatient: false,
     });
 
     await logAudit({
-      actorType: session.user.type,
+      actorType: "staff",
       actorId: session.user.id,
       actorName: session.user.name ?? "Unknown",
       action: "file.uploaded",
@@ -73,6 +103,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ file }, { status: 201 });
   } catch (err) {
+    if (err instanceof DuplicateFileError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
     console.error("File confirm failed:", err);
     return NextResponse.json({ error: "ConfirmFailed" }, { status: 500 });
   }

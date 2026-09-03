@@ -21,9 +21,16 @@ interface FilesSectionProps {
   files: MedicalFile[];
   defaultDepartment?: Department | null;
   allowDepartment?: boolean;
+  canUpload?: boolean;
 }
 
-export function FilesSection({ patientId, files, defaultDepartment, allowDepartment = true }: FilesSectionProps) {
+export function FilesSection({
+  patientId,
+  files,
+  defaultDepartment,
+  allowDepartment = true,
+  canUpload = true,
+}: FilesSectionProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState("");
@@ -130,9 +137,11 @@ export function FilesSection({ patientId, files, defaultDepartment, allowDepartm
         <CardTitle className="flex items-center gap-1.5">
           <FolderLock size={14} /> Documents
         </CardTitle>
-        <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-          <Plus size={14} /> Upload
-        </Button>
+        {canUpload && (
+          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+            <Plus size={14} /> Upload
+          </Button>
+        )}
       </div>
 
       {files.length === 0 ? (
@@ -175,7 +184,7 @@ export function FilesSection({ patientId, files, defaultDepartment, allowDepartm
         </div>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Upload Document">
+      <Modal open={open && canUpload} onClose={() => setOpen(false)} title="Upload Document">
         <form onSubmit={onUpload} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">File</label>

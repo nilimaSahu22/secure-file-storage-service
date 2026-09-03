@@ -51,6 +51,55 @@ enum ChatActorType {
   PATIENT
 }
 
+enum VisitStatus {
+  DRAFT
+  SIGNED
+}
+
+enum MedicationStatus {
+  ACTIVE
+  STOPPED
+  COMPLETED
+}
+
+enum FileStatus {
+  PENDING
+  ACCEPTED
+  BOUNCED
+  NEEDS_CLEARER_COPY
+}
+
+enum FileSource {
+  STAFF
+  PATIENT
+}
+
+enum FollowUpKind {
+  TEST
+  IMAGING
+  APPOINTMENT
+  REFERRAL
+  RESULT_AVAILABLE
+  OTHER
+}
+
+enum FollowUpStatus {
+  OUTSTANDING
+  COMPLETED
+  DISMISSED
+}
+
+enum TrendDirection {
+  RISING
+  FALLING
+  FLUCTUATING
+}
+
+enum TrendFlagStatus {
+  ACTIVE
+  DISMISSED
+}
+
 enum Department {
   RADIOLOGY
   OPD
@@ -66,13 +115,16 @@ model StaffUser {
   role         Role
   department   Department?
 
-  notes         ClinicalNote[]
-  appointments  Appointment[]
-  tasksAssigned Task[]
-  referralsFrom Referral[]     @relation("ReferralFrom")
-  referralsTo   Referral[]     @relation("ReferralTo")
-  uploadedFiles MedicalFile[]
-  chatMessages  ChatMessage[]
+  notes                 ClinicalNote[]
+  appointments          Appointment[]
+  tasksAssigned         Task[]
+  referralsFrom         Referral[]     @relation("ReferralFrom")
+  referralsTo           Referral[]     @relation("ReferralTo")
+  uploadedFiles         MedicalFile[]
+  chatMessages          ChatMessage[]
+  visitsAuthored        Visit[]        @relation("VisitAuthor")
+  visitsSigned          Visit[]        @relation("VisitSigner")
+  prescribedMedications Medication[]   @relation("MedicationPrescriber")
 }
 
 model Patient {
@@ -94,6 +146,10 @@ model Patient {
   notes          ClinicalNote[]
   appointments   Appointment[]
   visits         Visit[]
+  prescriptions  Prescription[]
+  visitSummaries PatientVisitSummary[]
+  followUpItems  FollowUpItem[]
+  trendFlags     TrendFlag[]
   tasks          Task[]
   priorAuths     PriorAuthorization[]
   referrals      Referral[]
@@ -104,13 +160,20 @@ model Patient {
 }
 
 model Medication {
-  id           String   @id @default(uuid())
-  patientId    String
-  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  name         String
-  dosage       String
-  frequency    String
-  prescribedAt DateTime @default(now())
+  id             String           @id @default(uuid())
+  patientId      String
+  patient        Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name           String
+  dosage         String
+  frequency      String
+  route          String?
+  duration       String?
+  status         MedicationStatus @default(ACTIVE)
+  visitId        String?
+  visit          Visit?           @relation(fields: [visitId], references: [id])
+  prescribedById String?
+  prescribedBy   StaffUser?       @relation("MedicationPrescriber", fields: [prescribedById], references: [id])
+  prescribedAt   DateTime         @default(now())
 
   @@index([patientId])
 }
@@ -141,13 +204,17 @@ model VitalSign {
 }
 
 model TestResult {
-  id          String   @id @default(uuid())
-  patientId   String
-  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  testName    String
-  result      String
-  normalRange String?
-  recordedAt  DateTime @default(now())
+  id           String       @id @default(uuid())
+  patientId    String
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  testName     String
+  result       String
+  normalRange  String?
+  recordedAt   DateTime     @default(now())
+  documentDate DateTime?
+  enteredByAI  Boolean      @default(false)
+  sourceFileId String?
+  sourceFile   MedicalFile? @relation(fields: [sourceFileId], references: [id], onDelete: SetNull)
 
   @@index([patientId])
 }
@@ -167,14 +234,26 @@ model Appointment {
 }
 
 model Visit {
-  id         String   @id @default(uuid())
-  patientId  String
-  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  transcript String?
-  startedAt  DateTime @default(now())
+  id                 String      @id @default(uuid())
+  patientId          String
+  patient            Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  authorId           String?
+  author             StaffUser?  @relation("VisitAuthor", fields: [authorId], references: [id])
+  transcript         String?     @db.Text
+  status             VisitStatus @default(DRAFT)
+  signedAt           DateTime?
+  signedById         String?
+  signedBy           StaffUser?  @relation("VisitSigner", fields: [signedById], references: [id])
+  signatureStatement String?
+  prescriptionPdfKey String?
+  startedAt          DateTime    @default(now())
 
-  vitals VitalSign[]
-  note   ClinicalNote?
+  vitals         VitalSign[]
+  note           ClinicalNote?
+  prescription   Prescription?
+  patientSummary PatientVisitSummary?
+  followUpItems  FollowUpItem[]
+  medications    Medication[]
 
   @@index([patientId])
 }
@@ -192,10 +271,95 @@ model ClinicalNote {
   assessment    String
   plan          String
   isAiGenerated Boolean   @default(false)
+  noteVersion   Int       @default(1)
   createdAt     DateTime  @default(now())
 
   codingSuggestions CodingSuggestion[]
   tasks             Task[]
+
+  @@index([patientId])
+}
+
+model Prescription {
+  id             String    @id @default(uuid())
+  visitId        String    @unique
+  visit          Visit     @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  patientId      String
+  patient        Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  investigations String[]  @default([])
+  advice         String?   @db.Text
+  followUpAt     DateTime?
+  finalizedAt    DateTime?
+  createdAt      DateTime  @default(now())
+
+  items PrescriptionItem[]
+
+  @@index([patientId])
+}
+
+model PrescriptionItem {
+  id             String       @id @default(uuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicationName String
+  dose           String
+  route          String
+  frequency      String
+  duration       String?
+  instructions   String?      @db.Text
+  sortOrder      Int          @default(0)
+  medicationId   String?
+  createdAt      DateTime     @default(now())
+
+  @@index([prescriptionId])
+}
+
+model TrendFlag {
+  id                   String          @id @default(uuid())
+  patientId            String
+  patient              Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  metric               String
+  direction            TrendDirection
+  severity             AlertSeverity   @default(LOW)
+  window               String
+  dataPoints           Json
+  deterministicSummary String
+  narrative            String?         @db.Text
+  status               TrendFlagStatus @default(ACTIVE)
+  computedAt           DateTime        @default(now())
+
+  @@unique([patientId, metric, direction])
+  @@index([patientId, status])
+}
+
+model FollowUpItem {
+  id                      String         @id @default(uuid())
+  patientId               String
+  patient                 Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  visitId                 String?
+  visit                   Visit?         @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  kind                    FollowUpKind
+  description             String
+  dueAt                   DateTime?
+  status                  FollowUpStatus @default(OUTSTANDING)
+  satisfiedByFileId       String?
+  satisfiedByTestResultId String?
+  createdAt               DateTime       @default(now())
+
+  @@index([patientId, status])
+}
+
+model PatientVisitSummary {
+  id                String   @id @default(uuid())
+  visitId           String   @unique
+  visit             Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  patientId         String
+  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  plainSummary      String   @db.Text
+  plainPrescription String   @db.Text
+  sourceNoteVersion Int
+  stale             Boolean  @default(false)
+  generatedAt       DateTime @default(now())
 
   @@index([patientId])
 }
@@ -294,9 +458,18 @@ model MedicalFile {
   version           Int         @default(1)
   previousVersionId String?
   extractedText     String?     @db.Text
+  status            FileStatus  @default(ACCEPTED)
+  source            FileSource  @default(STAFF)
+  contentHash       String?
+  documentDate      DateTime?
+  validation        Json?
+  bounceReason      String?
   createdAt         DateTime    @default(now())
 
+  testResults TestResult[]
+
   @@index([patientId])
+  @@index([patientId, contentHash])
 }
 
 model ChatMessage {

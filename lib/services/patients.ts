@@ -28,10 +28,21 @@ export function getPatientById(id: string) {
       medications: { orderBy: { prescribedAt: "desc" } },
       allergies: true,
       vitals: { orderBy: { recordedAt: "desc" } },
-      testResults: { orderBy: { recordedAt: "desc" } },
+      testResults: { orderBy: { recordedAt: "desc" }, include: { sourceFile: true } },
+      followUpItems: { orderBy: [{ status: "asc" }, { dueAt: "asc" }] },
+      trendFlags: { where: { status: "ACTIVE" }, orderBy: { computedAt: "desc" } },
       notes: {
         orderBy: { createdAt: "desc" },
-        include: { author: true, codingSuggestions: true },
+        include: {
+          author: true,
+          codingSuggestions: true,
+          visit: {
+            include: {
+              signedBy: true,
+              prescription: { include: { items: { orderBy: { sortOrder: "asc" } } } },
+            },
+          },
+        },
       },
       appointments: { orderBy: { scheduledAt: "desc" }, include: { provider: true } },
       tasks: { orderBy: { createdAt: "desc" }, include: { assignedTo: true } },
@@ -42,7 +53,7 @@ export function getPatientById(id: string) {
       },
       chartSummaries: { orderBy: { generatedAt: "desc" }, take: 1 },
       alerts: { orderBy: { triggeredAt: "desc" } },
-      files: { orderBy: [{ category: "asc" }, { version: "desc" }] },
+      files: { where: { status: "ACCEPTED" }, orderBy: [{ category: "asc" }, { version: "desc" }] },
       chatMessages: {
         where: { actorType: "DOCTOR" },
         orderBy: { createdAt: "asc" },

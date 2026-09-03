@@ -51,12 +51,17 @@ const PATIENTS: PatientFixture[] = [
     ],
     allergies: [{ allergen: "Penicillin", reaction: "Hives", severity: AlertSeverity.HIGH }],
     vitals: [
+      { type: "Blood Pressure Systolic", value: "132", daysAgo: 180 },
+      { type: "Blood Pressure Systolic", value: "138", daysAgo: 90 },
+      { type: "Blood Pressure Systolic", value: "144", daysAgo: 30 },
       { type: "Blood Pressure Systolic", value: "148", daysAgo: 3 },
       { type: "Blood Pressure Diastolic", value: "92", daysAgo: 3 },
       { type: "Heart Rate", value: "78", daysAgo: 3 },
       { type: "Glucose", value: "162", daysAgo: 3 },
     ],
     testResults: [
+      { testName: "HbA1c", result: "6.6%", normalRange: "<5.7%", daysAgo: 180 },
+      { testName: "HbA1c", result: "6.9%", normalRange: "<5.7%", daysAgo: 90 },
       { testName: "HbA1c", result: "7.2%", normalRange: "<5.7%", daysAgo: 14 },
       { testName: "Lipid Panel — LDL", result: "138 mg/dL", normalRange: "<100 mg/dL", daysAgo: 14 },
     ],
@@ -220,12 +225,19 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   // Delete in FK-safe order (children before parents).
   await prisma.codingSuggestion.deleteMany();
   await prisma.task.deleteMany();
+  await prisma.trendFlag.deleteMany();
+  await prisma.followUpItem.deleteMany();
+  await prisma.patientVisitSummary.deleteMany();
+  await prisma.prescriptionItem.deleteMany();
+  await prisma.prescription.deleteMany();
   await prisma.clinicalNote.deleteMany();
+  await prisma.medication.deleteMany();
   await prisma.vitalSign.deleteMany();
   await prisma.visit.deleteMany();
   await prisma.testResult.deleteMany();
-  await prisma.medication.deleteMany();
   await prisma.allergy.deleteMany();
+  await prisma.chatMessage.deleteMany();
+  await prisma.medicalFile.deleteMany();
   await prisma.appointment.deleteMany();
   await prisma.priorAuthorization.deleteMany();
   await prisma.referral.deleteMany();
@@ -308,6 +320,132 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
       },
     });
   }
+
+  // A signed demo visit for Harold Bramwell (the portal account) so the patient-facing
+  // visit summary, follow-up checklist, and reminders demo end-to-end in the portal.
+  const haroldId = patientIds[patientIds.length - 1];
+  const haroldVisitSignedAt = daysAgo(2);
+  const haroldVisit = await prisma.visit.create({
+    data: {
+      patientId: haroldId,
+      authorId: staffByKey.get("drRamirez")!,
+      transcript:
+        "Doctor: How have you been since we adjusted your blood pressure medication?\n" +
+        "Patient: A bit better, though I still get lightheaded in the mornings.\n" +
+        "Doctor: Let's keep the lisinopril at 10mg once daily and recheck your kidney function and HbA1c. " +
+        "Cut back on salt and check your pressure at home. Come back in four weeks.",
+      status: "SIGNED",
+      signedAt: haroldVisitSignedAt,
+      signedById: staffByKey.get("drRamirez")!,
+      signatureStatement: `Electronically signed by Dr. Elena Ramirez on ${haroldVisitSignedAt
+        .toISOString()
+        .slice(0, 10)}`,
+      note: {
+        create: {
+          patientId: haroldId,
+          authorId: staffByKey.get("drRamirez")!,
+          subjective: "Follow-up for hypertension. Reports mild morning lightheadedness. Adherent to medication.",
+          objective: "BP 128/78, HR 74. No acute distress. Creatinine 1.1 mg/dL on recent labs.",
+          assessment: "Hypertension, improving on current therapy. Morning orthostatic symptoms, likely mild.",
+          plan: "Continue lisinopril 10mg once daily. Order repeat basic metabolic panel and HbA1c. Home BP monitoring and salt reduction. Follow up in 4 weeks.",
+          isAiGenerated: true,
+          createdAt: haroldVisitSignedAt,
+        },
+      },
+      prescription: {
+        create: {
+          patientId: haroldId,
+          investigations: ["Basic metabolic panel", "HbA1c"],
+          advice: "Reduce dietary salt. Check blood pressure at home each morning and keep a log.",
+          followUpAt: daysFromNow(28),
+          finalizedAt: haroldVisitSignedAt,
+          items: {
+            create: [
+              {
+                medicationName: "Lisinopril",
+                dose: "10mg",
+                route: "Oral",
+                frequency: "Once daily",
+                duration: "Ongoing",
+                instructions: "Take in the morning with water.",
+                sortOrder: 0,
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+  await prisma.medication.create({
+    data: {
+      patientId: haroldId,
+      name: "Lisinopril",
+      dosage: "10mg",
+      frequency: "Once daily",
+      route: "Oral",
+      duration: "Ongoing",
+      status: "ACTIVE",
+      visitId: haroldVisit.id,
+      prescribedById: staffByKey.get("drRamirez")!,
+      prescribedAt: haroldVisitSignedAt,
+    },
+  });
+  await prisma.followUpItem.createMany({
+    data: [
+      {
+        patientId: haroldId,
+        visitId: haroldVisit.id,
+        kind: "TEST",
+        description: "Basic metabolic panel",
+        dueAt: daysFromNow(28),
+        status: "OUTSTANDING",
+        createdAt: haroldVisitSignedAt,
+      },
+      {
+        patientId: haroldId,
+        visitId: haroldVisit.id,
+        kind: "TEST",
+        description: "HbA1c",
+        dueAt: daysFromNow(28),
+        status: "OUTSTANDING",
+        createdAt: haroldVisitSignedAt,
+      },
+      {
+        patientId: haroldId,
+        visitId: haroldVisit.id,
+        kind: "APPOINTMENT",
+        description: "Attend your follow-up visit",
+        dueAt: daysFromNow(28),
+        status: "OUTSTANDING",
+        createdAt: haroldVisitSignedAt,
+      },
+      {
+        patientId: haroldId,
+        kind: "RESULT_AVAILABLE",
+        description: "New result available: Creatinine",
+        status: "OUTSTANDING",
+        createdAt: daysAgo(1),
+      },
+    ],
+  });
+  await prisma.patientVisitSummary.create({
+    data: {
+      visitId: haroldVisit.id,
+      patientId: haroldId,
+      sourceNoteVersion: 1,
+      plainSummary:
+        "You came in to check on your blood pressure. You said you feel a bit better but still get " +
+        "lightheaded in the mornings. Your blood pressure was 128/78 and your kidney test was normal. " +
+        "Your blood pressure is improving with your current medicine. The morning lightheadedness is " +
+        "likely mild. The plan is to keep taking your medicine, get a couple of blood tests, watch your " +
+        "blood pressure at home, cut back on salt, and come back in about 4 weeks.",
+      plainPrescription:
+        "Lisinopril 10mg, one tablet by mouth once a day in the morning with water, ongoing. " +
+        "Tests ordered: a basic metabolic panel and an HbA1c. Advice: eat less salt and check your " +
+        "blood pressure at home each morning, keeping a log. Follow-up: about 4 weeks from now.",
+      generatedAt: haroldVisitSignedAt,
+    },
+  });
 
   // Appointments: mix of past/completed and upcoming/scheduled.
   const providerIds = [staffByKey.get("drRamirez")!, staffByKey.get("drChen")!];

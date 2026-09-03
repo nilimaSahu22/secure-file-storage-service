@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
+import { format } from "date-fns";
 import { auth } from "@/lib/auth";
 import { getPatientPortalData } from "@/lib/services/portal";
-import { FilesSection } from "@/components/chart/FilesSection";
+import { PortalDocuments } from "@/components/portal/PortalDocuments";
 
 export const dynamic = "force-dynamic";
 
@@ -12,5 +13,12 @@ export default async function PortalDocumentsPage() {
   const data = await getPatientPortalData(session.user.id);
   if (!data) redirect("/portal/login");
 
-  return <FilesSection patientId={data.id} files={data.files} allowDepartment={false} />;
+  return (
+    <PortalDocuments
+      patientId={data.id}
+      patientName={`${data.firstName} ${data.lastName}`}
+      dateOfBirth={format(data.dateOfBirth, "MMM d, yyyy")}
+      files={data.files}
+    />
+  );
 }
