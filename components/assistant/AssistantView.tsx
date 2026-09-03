@@ -4,22 +4,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Sparkles,
-  Plus,
+  SquarePen,
   Mic,
   MicOff,
-  Send,
+  ArrowUp,
   Volume2,
   Loader2,
   Square,
-  PanelLeftClose,
   PanelLeft,
+  PanelLeftClose,
+  Maximize2,
+  X,
   Pencil,
   Archive,
   FileText,
-  X,
   Check,
   CircleAlert,
   Download,
+  MessageSquare,
+  Stethoscope,
+  CalendarClock,
+  ListChecks,
+  FolderSearch,
 } from "lucide-react";
 import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
 import { FocusedPatientPicker } from "@/components/assistant/FocusedPatientPicker";
@@ -30,6 +36,7 @@ export interface ThreadSummary {
   title: string;
   focusedPatientId: string | null;
   archived: boolean;
+  updatedAt: string | Date;
 }
 
 export interface ProposedAction {
@@ -50,11 +57,48 @@ interface MessageState {
 
 interface AssistantViewProps {
   ownerType: "staff" | "patient";
+  variant?: "full" | "panel";
   initialThreads: ThreadSummary[];
   activeThreadId: string | null;
   initialMessages: AssistantMessageView[];
   focusedPatient: { id: string; name: string } | null;
+  onExpand?: () => void;
+  onClose?: () => void;
 }
+
+const DEFAULT_TITLE_LABELS = new Set(["New conversation", "New chat"]);
+
+const TOOL_LABELS: Record<string, string> = {
+  find_patient: "Finding the patient",
+  get_patient_summary: "Reading the chart",
+  get_clinical_notes: "Reading clinical notes",
+  search_patient_documents: "Searching documents",
+  list_appointments: "Checking appointments",
+  list_tasks: "Checking tasks",
+  list_prior_auths: "Checking prior authorisations",
+  list_referrals: "Checking referrals",
+  list_visits: "Reviewing visits",
+  list_followups: "Checking follow-ups",
+  list_document_requests: "Checking document requests",
+  get_department_workflow: "Reading the workflow",
+  get_providers: "Looking up providers",
+  check_trends: "Checking trends",
+  search_audit_log: "Searching the audit log",
+};
+
+const STAFF_SUGGESTIONS = [
+  { icon: Stethoscope, label: "Summarise this patient's recent visits", prompt: "Summarise this patient's recent visits." },
+  { icon: FolderSearch, label: "What do the latest documents say?", prompt: "What do the latest uploaded documents say?" },
+  { icon: CalendarClock, label: "Show upcoming appointments", prompt: "What appointments does this patient have coming up?" },
+  { icon: ListChecks, label: "What tasks are open?", prompt: "What tasks are open for this patient?" },
+];
+
+const PATIENT_SUGGESTIONS = [
+  { icon: Stethoscope, label: "Explain my latest visit", prompt: "Can you explain my latest visit in plain language?" },
+  { icon: FolderSearch, label: "What documents were requested from me?", prompt: "What documents have been requested from me?" },
+  { icon: CalendarClock, label: "Request an appointment", prompt: "I'd like to request an appointment." },
+  { icon: ListChecks, label: "What reminders do I have?", prompt: "What reminders or follow-ups do I have?" },
+];
 
 function toState(m: AssistantMessageView): MessageState {
   return {
@@ -66,13 +110,52 @@ function toState(m: AssistantMessageView): MessageState {
   };
 }
 
+function relativeTime(value: string | Date): string {
+  const then = new Date(value).getTime();
+  if (Number.isNaN(then)) return "";
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.round(hrs / 24);
+  if (days < 7) return `${days}d`;
+  return `${Math.round(days / 7)}w`;
+}
+
+function groupThreads(threads: ThreadSummary[]): { label: string; items: ThreadSummary[] }[] {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const day = 86_400_000;
+  const buckets: Record<string, ThreadSummary[]> = {
+    Today: [],
+    Yesterday: [],
+    "Previous 7 days": [],
+    Older: [],
+  };
+  for (const t of threads) {
+    const ts = new Date(t.updatedAt).getTime();
+    if (ts >= startOfToday) buckets.Today.push(t);
+    else if (ts >= startOfToday - day) buckets.Yesterday.push(t);
+    else if (ts >= startOfToday - 7 * day) buckets["Previous 7 days"].push(t);
+    else buckets.Older.push(t);
+  }
+  return Object.entries(buckets)
+    .filter(([, items]) => items.length > 0)
+    .map(([label, items]) => ({ label, items }));
+}
+
 export function AssistantView({
   ownerType,
+  variant = "full",
   initialThreads,
   activeThreadId,
   initialMessages,
   focusedPatient: initialFocusedPatient,
+  onExpand,
+  onClose,
 }: AssistantViewProps) {
+  const isPanel = variant === "panel";
   const router = useRouter();
   const params = useSearchParams();
 
@@ -83,8 +166,9 @@ export function AssistantView({
 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [workLabel, setWorkLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [railOpen, setRailOpen] = useState(true);
+  const [railOpen, setRailOpen] = useState(!isPanel);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -92,6 +176,7 @@ export function AssistantView({
   const [previewingId, setPreviewingId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const askedByVoiceRef = useRef(false);
   const spokenLanguageRef = useRef<string | null>(null);
 
@@ -178,14 +263,22 @@ export function AssistantView({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, sending]);
 
+  function autoGrow() {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }
+
   const syncUrl = useCallback(
     (id: string | null) => {
+      if (isPanel) return;
       const next = new URLSearchParams(params.toString());
       if (id) next.set("thread", id);
       else next.delete("thread");
       router.replace(`?${next.toString()}`, { scroll: false });
     },
-    [params, router]
+    [isPanel, params, router]
   );
 
   async function openThread(id: string) {
@@ -199,9 +292,8 @@ export function AssistantView({
       setThreadId(id);
       setMessages((data.messages ?? []).map(toState));
       const t: ThreadSummary | undefined = threads.find((x) => x.id === id);
-      setFocusedPatient(
-        t?.focusedPatientId ? { id: t.focusedPatientId, name: "" } : null
-      );
+      setFocusedPatient(t?.focusedPatientId ? { id: t.focusedPatientId, name: "" } : null);
+      if (isPanel) setRailOpen(false);
       syncUrl(id);
     } catch {
       /* ignore */
@@ -214,7 +306,9 @@ export function AssistantView({
     setMessages([]);
     setFocusedPatient(null);
     setError(null);
+    if (isPanel) setRailOpen(false);
     syncUrl(null);
+    inputRef.current?.focus();
   }
 
   async function setFocus(patient: { id: string; name: string } | null) {
@@ -228,8 +322,8 @@ export function AssistantView({
     }
   }
 
-  async function send() {
-    const text = input.trim();
+  async function send(override?: string) {
+    const text = (override ?? input).trim();
     if (!text || sending) return;
     const askedByVoice = askedByVoiceRef.current;
     askedByVoiceRef.current = false;
@@ -241,8 +335,10 @@ export function AssistantView({
       { id: streamingId, role: "assistant", content: "", citedFiles: [], actions: [] },
     ]);
     setInput("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
     setError(null);
     setSending(true);
+    setWorkLabel("Working");
     primeAudio();
 
     const patchStreaming = (fn: (m: MessageState) => MessageState) =>
@@ -289,6 +385,8 @@ export function AssistantView({
           const evt = JSON.parse(line.slice(6));
           if (evt.t === "delta") {
             patchStreaming((m) => ({ ...m, content: m.content + evt.v }));
+          } else if (evt.t === "tool") {
+            setWorkLabel(TOOL_LABELS[evt.name] ?? "Working");
           } else if (evt.t === "reset") {
             patchStreaming((m) => ({ ...m, content: "" }));
           } else if (evt.t === "error") {
@@ -316,13 +414,21 @@ export function AssistantView({
       }));
       if (isNew) {
         setThreads((prev) => [
-          { id: data.threadId, title: data.title, focusedPatientId: focusedPatient?.id ?? null, archived: false },
+          {
+            id: data.threadId,
+            title: data.title,
+            focusedPatientId: focusedPatient?.id ?? null,
+            archived: false,
+            updatedAt: new Date().toISOString(),
+          },
           ...prev,
         ]);
         syncUrl(data.threadId);
       } else {
         setThreads((prev) =>
-          prev.map((t) => (t.id === data.threadId ? { ...t, title: data.title } : t))
+          prev.map((t) =>
+            t.id === data.threadId ? { ...t, title: data.title, updatedAt: new Date().toISOString() } : t
+          )
         );
       }
       if (askedByVoice && typeof data.reply === "string" && data.reply.trim()) {
@@ -332,6 +438,7 @@ export function AssistantView({
       setError("Could not get a response. Please try again.");
     } finally {
       setSending(false);
+      setWorkLabel(null);
     }
   }
 
@@ -346,7 +453,7 @@ export function AssistantView({
       });
       const data = await res.json().catch(() => null);
       const status: ProposedAction["status"] = cancel ? "failed" : data?.ok ? "done" : "failed";
-      const result = cancel ? "Dismissed." : (data?.message ?? "");
+      const result = cancel ? "Dismissed." : data?.message ?? "";
       setMessages((prev) => {
         const next = prev.map((m) =>
           m.id === messageId
@@ -397,35 +504,46 @@ export function AssistantView({
     }).catch(() => null);
   }
 
-  return (
-    <div className="flex h-[calc(100vh-var(--assistant-chrome,7rem))] min-h-[520px] overflow-hidden rounded-xl border border-slate-200 bg-white">
-      {/* Thread rail */}
-      {railOpen ? (
-        <aside className="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-slate-50">
-          <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-3">
-            <button
-              onClick={newThread}
-              className="flex flex-1 items-center gap-1.5 rounded-lg bg-[#2f66ea] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#2554c7]"
-            >
-              <Plus size={14} /> New chat
-            </button>
-            <button
-              onClick={() => setRailOpen(false)}
-              aria-label="Hide conversation list"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600"
-            >
-              <PanelLeftClose size={16} />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2">
-            {threads.length === 0 && (
-              <p className="px-2 py-3 text-xs text-slate-400">No conversations yet.</p>
-            )}
-            {threads.map((t) => (
+  const activeThread = threads.find((t) => t.id === threadId);
+  const headerTitle =
+    activeThread && !DEFAULT_TITLE_LABELS.has(activeThread.title) ? activeThread.title : "Ask AI";
+  const streaming = messages.some((m) => m.id.startsWith("stream-") && m.content);
+  const suggestions = ownerType === "staff" ? STAFF_SUGGESTIONS : PATIENT_SUGGESTIONS;
+  const groups = groupThreads(threads);
+
+  const rail = (
+    <aside
+      className={`flex w-60 shrink-0 flex-col bg-slate-50/80 ${
+        isPanel ? "absolute inset-y-0 left-0 z-20 border-r border-slate-200 shadow-lg" : "border-r border-slate-200"
+      }`}
+    >
+      <div className="flex items-center gap-2 px-3 py-3">
+        <button
+          onClick={newThread}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          <SquarePen size={14} /> New chat
+        </button>
+        <button
+          onClick={() => setRailOpen(false)}
+          aria-label="Hide conversation list"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+        >
+          <PanelLeftClose size={16} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
+        {groups.length === 0 && <p className="px-2 py-3 text-xs text-slate-400">No conversations yet.</p>}
+        {groups.map((group) => (
+          <div key={group.label} className="mb-3">
+            <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+              {group.label}
+            </p>
+            {group.items.map((t) => (
               <div
                 key={t.id}
-                className={`group flex items-center gap-1 rounded-lg px-2 py-2 text-sm ${
-                  t.id === threadId ? "bg-white shadow-sm" : "hover:bg-slate-100"
+                className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
+                  t.id === threadId ? "bg-white shadow-sm ring-1 ring-slate-200/60" : "hover:bg-slate-100"
                 }`}
               >
                 {renamingId === t.id ? (
@@ -441,225 +559,336 @@ export function AssistantView({
                     className="min-w-0 flex-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs outline-none"
                   />
                 ) : (
-                  <button
-                    onClick={() => openThread(t.id)}
-                    className="min-w-0 flex-1 truncate text-left text-slate-700"
-                    title={t.title}
-                  >
-                    {t.title}
-                  </button>
+                  <>
+                    <button
+                      onClick={() => openThread(t.id)}
+                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-slate-700"
+                      title={t.title}
+                    >
+                      <MessageSquare size={13} className="shrink-0 text-slate-400" />
+                      <span className="truncate">{t.title}</span>
+                    </button>
+                    <span className="shrink-0 text-[11px] text-slate-400 group-hover:hidden">
+                      {relativeTime(t.updatedAt)}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setRenamingId(t.id);
+                        setRenameValue(t.title);
+                      }}
+                      aria-label="Rename"
+                      className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button
+                      onClick={() => archive(t.id)}
+                      aria-label="Archive"
+                      className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
+                    >
+                      <Archive size={12} />
+                    </button>
+                  </>
                 )}
-                <button
-                  onClick={() => {
-                    setRenamingId(t.id);
-                    setRenameValue(t.title);
-                  }}
-                  aria-label="Rename"
-                  className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
-                >
-                  <Pencil size={12} />
-                </button>
-                <button
-                  onClick={() => archive(t.id)}
-                  aria-label="Archive"
-                  className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
-                >
-                  <Archive size={12} />
-                </button>
               </div>
             ))}
           </div>
-        </aside>
-      ) : (
-        <button
-          onClick={() => setRailOpen(true)}
-          aria-label="Show conversation list"
-          className="flex h-10 w-10 shrink-0 items-center justify-center border-r border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
-        >
-          <PanelLeft size={16} />
-        </button>
+        ))}
+      </div>
+    </aside>
+  );
+
+  const composer = (
+    <div className="mx-auto w-full max-w-[46rem] px-4 pb-4 pt-2">
+      {messages.length === 0 && (
+        <div className="mb-3">
+          <p className="mb-1.5 text-sm font-semibold text-slate-900">What can I help you with?</p>
+          <div className="flex flex-col">
+            {suggestions.map((s) => (
+              <button
+                key={s.label}
+                onClick={() => {
+                  primeAudio();
+                  void send(s.prompt);
+                }}
+                className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+              >
+                <s.icon size={14} className="shrink-0 text-slate-400" />
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
-
-      {/* Chat column */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-          <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-            <Sparkles size={15} className="text-[#2f66ea]" /> Assistant
-          </p>
-          {ownerType === "staff" && (
-            <FocusedPatientPicker value={focusedPatient} onChange={setFocus} />
-          )}
-        </div>
-
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
-          <div className="mx-auto flex max-w-2xl flex-col gap-5">
-            {messages.length === 0 && (
-              <div className="mt-10 text-center text-sm text-slate-400">
-                {ownerType === "staff"
-                  ? "Pick a patient above, then ask about their chart, documents, appointments, or tasks."
-                  : "Ask about your visits, documents, appointments, or reminders."}
-              </div>
-            )}
-            {messages.map((m) =>
-              m.role === "user" ? (
-                <div key={m.id} className="flex justify-end">
-                  <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-[#2f66ea] px-3.5 py-2 text-sm text-white">
-                    {m.content}
-                  </div>
-                </div>
-              ) : (
-                <div key={m.id} className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                  {m.content}
-                  {voice.supported && m.content.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (speakingId === m.id) stopSpeaking();
-                        else void speak(m.id, m.content);
-                      }}
-                      aria-label={speakingId === m.id ? "Stop" : "Play aloud"}
-                      className="ml-1.5 inline-flex h-5 w-5 -translate-y-px items-center justify-center rounded align-middle text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                    >
-                      {loadingSpeechId === m.id ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : speakingId === m.id ? (
-                        <Square size={11} className="fill-current" />
-                      ) : (
-                        <Volume2 size={12} />
-                      )}
-                    </button>
-                  )}
-                  {m.citedFiles.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {m.citedFiles.map((f) => (
-                        <button
-                          key={f.id}
-                          onClick={() => openPreview(f.id, f.fileName)}
-                          disabled={previewingId === f.id}
-                          className="flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-100"
-                        >
-                          {previewingId === f.id ? (
-                            <Loader2 size={10} className="animate-spin" />
-                          ) : (
-                            <FileText size={10} />
-                          )}
-                          {f.fileName}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {m.actions.map((a) => (
-                    <div
-                      key={a.id}
-                      className={`mt-2.5 rounded-lg border px-3 py-2.5 text-sm ${
-                        a.status === "done"
-                          ? "border-green-200 bg-green-50"
-                          : a.status === "failed"
-                            ? "border-slate-200 bg-slate-50"
-                            : "border-blue-200 bg-blue-50"
-                      }`}
-                    >
-                      <p className="flex items-start gap-1.5 text-slate-800">
-                        {a.status === "done" ? (
-                          <Check size={14} className="mt-0.5 shrink-0 text-green-600" />
-                        ) : a.status === "failed" ? (
-                          <CircleAlert size={14} className="mt-0.5 shrink-0 text-slate-400" />
-                        ) : null}
-                        {a.status === "done" ? a.result || a.summary : a.summary}
-                      </p>
-                      {a.status === "proposed" && (
-                        <div className="mt-2 flex gap-2">
-                          <button
-                            onClick={() => resolveAction(m.id, a, false)}
-                            disabled={confirmingId === a.id}
-                            className="flex items-center gap-1 rounded-md bg-[#2f66ea] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#2554c7] disabled:bg-[#a8c0f5]"
-                          >
-                            {confirmingId === a.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                            Confirm
-                          </button>
-                          <button
-                            onClick={() => resolveAction(m.id, a, true)}
-                            disabled={confirmingId === a.id}
-                            className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
-            {sending && !messages.some((m) => m.id.startsWith("stream-") && m.content) && (
-              <div className="flex items-center gap-1 text-xs text-slate-400">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400 [animation-delay:0.15s]" />
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400 [animation-delay:0.3s]" />
-              </div>
-            )}
-            {error && <p className="text-xs text-red-600">{error}</p>}
-            {voice.error && <p className="text-xs text-red-600">{voice.error}</p>}
-          </div>
-        </div>
-
-        {(voice.recording || voice.transcribing) && (
-          <div className="flex items-center gap-2 border-t border-slate-100 bg-red-50/60 px-4 py-2">
-            <span className="relative flex h-2 w-2 shrink-0 items-center justify-center">
-              <span className="absolute h-2 w-2 animate-ping rounded-full bg-red-500 opacity-75" />
-              <span className="relative h-2 w-2 rounded-full bg-red-500" />
-            </span>
-            <p className="flex-1 text-xs italic text-slate-600">
-              {voice.recording ? "Listening… tap the mic to stop." : "Transcribing…"}
-            </p>
-          </div>
-        )}
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            primeAudio();
-            send();
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          primeAudio();
+          void send();
+        }}
+        className="relative rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors focus-within:border-slate-300"
+      >
+        <textarea
+          ref={inputRef}
+          value={input}
+          rows={1}
+          onChange={(e) => {
+            askedByVoiceRef.current = false;
+            setInput(e.target.value);
+            autoGrow();
           }}
-          className="flex items-center gap-2 border-t border-slate-100 p-3"
-        >
-          <input
-            value={input}
-            onChange={(e) => {
-              askedByVoiceRef.current = false;
-              setInput(e.target.value);
-            }}
-            placeholder="Ask the assistant…"
-            className="flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          />
-          {voice.supported && (
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              primeAudio();
+              void send();
+            }
+          }}
+          placeholder="Ask, search or make anything…"
+          className="max-h-52 w-full resize-none bg-transparent px-4 pb-12 pt-3 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+        />
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between px-2.5 py-2">
+          <span className="text-[11px] text-slate-300">{sending ? "" : "Shift + Enter for a new line"}</span>
+          <div className="flex items-center gap-1.5">
+            {voice.supported && (
+              <button
+                type="button"
+                onClick={() => {
+                  primeAudio();
+                  if (voice.recording) voice.stop();
+                  else voice.start();
+                }}
+                disabled={voice.transcribing}
+                aria-label={voice.recording ? "Stop voice input" : "Start voice input"}
+                className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:opacity-50 ${
+                  voice.recording
+                    ? "border-red-300 bg-red-50 text-red-600"
+                    : "border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                }`}
+              >
+                {voice.recording ? <MicOff size={15} /> : <Mic size={15} />}
+              </button>
+            )}
             <button
-              type="button"
-              onClick={() => {
-                primeAudio();
-                if (voice.recording) voice.stop();
-                else voice.start();
-              }}
-              disabled={voice.transcribing}
-              aria-label={voice.recording ? "Stop voice input" : "Start voice input"}
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:opacity-50 ${
-                voice.recording
-                  ? "border-red-300 bg-red-50 text-red-600"
-                  : "border-slate-300 text-slate-500 hover:bg-slate-50"
-              }`}
+              type="submit"
+              disabled={sending || !input.trim()}
+              aria-label="Send"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2f66ea] text-white transition-colors hover:bg-[#2554c7] disabled:bg-slate-200 disabled:text-slate-400"
             >
-              {voice.recording ? <MicOff size={16} /> : <Mic size={16} />}
+              {sending ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={15} />}
             </button>
+          </div>
+        </div>
+      </form>
+      {(voice.recording || voice.transcribing) && (
+        <p className="mt-1.5 flex items-center gap-1.5 px-1 text-xs italic text-slate-500">
+          <span className="relative flex h-2 w-2 items-center justify-center">
+            <span className="absolute h-2 w-2 animate-ping rounded-full bg-red-500 opacity-75" />
+            <span className="relative h-2 w-2 rounded-full bg-red-500" />
+          </span>
+          {voice.recording ? "Listening… tap the mic to stop." : "Transcribing…"}
+        </p>
+      )}
+      {voice.error && <p className="mt-1 px-1 text-xs text-red-600">{voice.error}</p>}
+    </div>
+  );
+
+  return (
+    <div
+      className={
+        isPanel
+          ? "flex h-full w-full flex-col overflow-hidden bg-white"
+          : "relative flex h-[calc(100vh-var(--assistant-chrome,7rem))] min-h-[520px] overflow-hidden bg-white"
+      }
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5">
+        <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-slate-900">
+          <Sparkles size={15} className="shrink-0 text-[#2f66ea]" />
+          <span className="truncate">{headerTitle}</span>
+        </p>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {ownerType === "staff" && !isPanel && (
+            <div className="mr-1">
+              <FocusedPatientPicker value={focusedPatient} onChange={setFocus} />
+            </div>
           )}
           <button
-            type="submit"
-            disabled={sending || !input.trim()}
-            aria-label="Send"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#2f66ea] text-white transition-colors hover:bg-[#2554c7] disabled:bg-[#a8c0f5]"
+            onClick={newThread}
+            aria-label="New chat"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
           >
-            {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+            <SquarePen size={15} />
           </button>
-        </form>
+          {isPanel && onExpand && (
+            <button
+              onClick={onExpand}
+              aria-label="Open full screen"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <Maximize2 size={14} />
+            </button>
+          )}
+          {!isPanel && (
+            <button
+              onClick={() => setRailOpen((v) => !v)}
+              aria-label={railOpen ? "Hide conversation list" : "Show conversation list"}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              {railOpen ? <PanelLeftClose size={15} /> : <PanelLeft size={15} />}
+            </button>
+          )}
+          {isPanel && onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Close assistant"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {ownerType === "staff" && isPanel && (
+        <div className="border-b border-slate-100 px-3 py-2">
+          <FocusedPatientPicker value={focusedPatient} onChange={setFocus} />
+        </div>
+      )}
+
+      <div className="relative flex min-h-0 flex-1">
+        {railOpen && rail}
+        {isPanel && railOpen && (
+          <button
+            aria-label="Close conversation list"
+            onClick={() => setRailOpen(false)}
+            className="absolute inset-0 z-10 bg-slate-900/10"
+          />
+        )}
+        {isPanel && !railOpen && (
+          <button
+            onClick={() => setRailOpen(true)}
+            aria-label="Show conversation list"
+            className="absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <PanelLeft size={15} />
+          </button>
+        )}
+
+        {/* Chat column */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto">
+            <div className="mx-auto flex min-h-full max-w-2xl flex-col gap-5 px-4 py-6">
+              <div className="flex-1" />
+              {messages.map((m) =>
+                m.role === "user" ? (
+                  <div key={m.id} className="flex justify-end">
+                    <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-[#2f66ea] px-3.5 py-2 text-sm text-white">
+                      {m.content}
+                    </div>
+                  </div>
+                ) : (
+                  <div key={m.id} className="whitespace-pre-wrap text-[15px] leading-relaxed text-slate-800">
+                    {m.content}
+                    {voice.supported && m.content.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (speakingId === m.id) stopSpeaking();
+                          else void speak(m.id, m.content);
+                        }}
+                        aria-label={speakingId === m.id ? "Stop" : "Play aloud"}
+                        className="ml-1.5 inline-flex h-5 w-5 -translate-y-px items-center justify-center rounded align-middle text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        {loadingSpeechId === m.id ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : speakingId === m.id ? (
+                          <Square size={11} className="fill-current" />
+                        ) : (
+                          <Volume2 size={12} />
+                        )}
+                      </button>
+                    )}
+                    {m.citedFiles.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {m.citedFiles.map((f) => (
+                          <button
+                            key={f.id}
+                            onClick={() => openPreview(f.id, f.fileName)}
+                            disabled={previewingId === f.id}
+                            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-100"
+                          >
+                            {previewingId === f.id ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : (
+                              <FileText size={11} className="text-[#2f66ea]" />
+                            )}
+                            {f.fileName}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {m.actions.map((a) => (
+                      <div
+                        key={a.id}
+                        className={`mt-3 rounded-xl border px-3.5 py-3 text-sm ${
+                          a.status === "done"
+                            ? "border-green-200 bg-green-50/70"
+                            : a.status === "failed"
+                              ? "border-slate-200 bg-slate-50"
+                              : "border-slate-200 bg-white shadow-sm"
+                        }`}
+                      >
+                        <p className="flex items-start gap-1.5 text-slate-800">
+                          {a.status === "done" ? (
+                            <Check size={14} className="mt-0.5 shrink-0 text-green-600" />
+                          ) : a.status === "failed" ? (
+                            <CircleAlert size={14} className="mt-0.5 shrink-0 text-slate-400" />
+                          ) : (
+                            <Sparkles size={14} className="mt-0.5 shrink-0 text-[#2f66ea]" />
+                          )}
+                          {a.status === "done" ? a.result || a.summary : a.summary}
+                        </p>
+                        {a.status === "proposed" && (
+                          <div className="mt-2.5 flex gap-2">
+                            <button
+                              onClick={() => resolveAction(m.id, a, false)}
+                              disabled={confirmingId === a.id}
+                              className="flex items-center gap-1 rounded-lg bg-[#2f66ea] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2554c7] disabled:bg-[#a8c0f5]"
+                            >
+                              {confirmingId === a.id ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <Check size={12} />
+                              )}
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => resolveAction(m.id, a, true)}
+                              disabled={confirmingId === a.id}
+                              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+              {sending && !streaming && (
+                <p className="flex items-center gap-2 text-sm text-slate-400">
+                  <Loader2 size={13} className="animate-spin" />
+                  {workLabel ?? "Working"}…
+                </p>
+              )}
+              {error && <p className="text-sm text-red-600">{error}</p>}
+            </div>
+          </div>
+
+          {composer}
+        </div>
       </div>
 
       {preview && (

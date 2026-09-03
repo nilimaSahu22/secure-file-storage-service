@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { Topbar } from "@/components/shell/Topbar";
+import { AssistantDock } from "@/components/assistant/AssistantDock";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const session = await auth();
@@ -19,6 +20,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         <Topbar name={name} role={session.user.role} />
         <main className="flex-1">{children}</main>
       </div>
+      <AssistantDock ownerType="staff" />
     </div>
   );
 }

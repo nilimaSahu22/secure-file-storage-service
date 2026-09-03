@@ -17,6 +17,8 @@ export function listThreads(owner: AssistantOwner, includeArchived = false) {
   });
 }
 
+export type ThreadListItem = Awaited<ReturnType<typeof listThreads>>[number];
+
 export async function getThread(id: string, owner: AssistantOwner) {
   const thread = await prisma.assistantThread.findUnique({ where: { id } });
   if (!thread || thread.ownerType !== owner.type || thread.ownerId !== owner.id) return null;

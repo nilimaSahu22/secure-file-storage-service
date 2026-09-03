@@ -763,11 +763,12 @@ export function getToolset(ctx: ToolContext): AssistantTool[] {
 }
 
 export function toAnthropicTools(tools: AssistantTool[]) {
+  // Note: the API caps `strict: true` tools at 20 and the staff toolset exceeds
+  // that, so we rely on schema validation in each executor instead of strict mode.
   return tools.map((t) => ({
     name: t.name,
     description: t.description,
     input_schema: t.input_schema as { type: "object"; [k: string]: unknown },
-    strict: true,
   }));
 }
 
