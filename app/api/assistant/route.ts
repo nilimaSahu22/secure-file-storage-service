@@ -109,108 +109,140 @@ export async function POST(request: NextRequest) {
   ];
 
   const client = getAnthropicClient();
-  const proposedActions: ProposedAction[] = [];
-  let reply = "";
+  const system =
+    SYSTEM_PROMPT +
+    (language ? `\n\nThe user's spoken question was detected as language "${language}".` : "") +
+    contextBlock;
+  const threadId = thread.id;
+  const threadTitle = thread.title;
 
-  try {
-    for (let i = 0; i < MAX_ITERATIONS; i++) {
-      const res = await client.messages.create({
-        model: getAgentModel(),
-        max_tokens: 1500,
-        system:
-          SYSTEM_PROMPT +
-          (language ? `\n\nThe user's spoken question was detected as language "${language}".` : "") +
-          contextBlock,
-        tools: toAnthropicTools(tools),
-        messages,
-      });
+  const encoder = new TextEncoder();
+  const sse = (obj: unknown) => encoder.encode(`data: ${JSON.stringify(obj)}\n\n`);
 
-      const textBlocks = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text");
-      if (textBlocks.length) reply = textBlocks.map((b) => b.text).join("\n").trim();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const proposedActions: ProposedAction[] = [];
+      let reply = "";
+      let streamedAny = false;
 
-      if (res.stop_reason !== "tool_use") break;
-
-      const toolUses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-      messages.push({ role: "assistant", content: res.content });
-
-      const results: Anthropic.ToolResultBlockParam[] = [];
-      for (const tu of toolUses) {
-        const tool = toolByName.get(tu.name);
-        const input = (tu.input ?? {}) as Record<string, unknown>;
-        if (!tool) {
-          results.push({ type: "tool_result", tool_use_id: tu.id, content: "Unknown tool.", is_error: true });
-          continue;
-        }
-        if (tool.kind === "read") {
-          try {
-            const out = await tool.run(input, ctx);
-            results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out).slice(0, 12000) });
-          } catch (err) {
-            results.push({
-              type: "tool_result",
-              tool_use_id: tu.id,
-              content: err instanceof ToolError ? err.message : "Tool failed.",
-              is_error: true,
-            });
-          }
-        } else {
-          let summary = tool.description;
-          try {
-            summary = await tool.describe(input, ctx);
-          } catch {
-            /* keep default */
-          }
-          const action: ProposedAction = { id: randomUUID(), tool: tool.name, params: input, summary, status: "proposed" };
-          proposedActions.push(action);
-          results.push({
-            type: "tool_result",
-            tool_use_id: tu.id,
-            content:
-              "NOT PERFORMED — this action needs the user's confirmation. Tell the user in one sentence " +
-              "what you will do and then stop.",
+      try {
+        for (let i = 0; i < MAX_ITERATIONS; i++) {
+          const turnStream = client.messages.stream({
+            model: getAgentModel(),
+            max_tokens: 1500,
+            system,
+            tools: toAnthropicTools(tools),
+            messages,
           });
+          turnStream.on("text", (delta) => {
+            streamedAny = true;
+            controller.enqueue(sse({ t: "delta", v: delta }));
+          });
+          const res = await turnStream.finalMessage();
+
+          const textBlocks = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text");
+          if (textBlocks.length) reply = textBlocks.map((b) => b.text).join("\n").trim();
+
+          if (res.stop_reason !== "tool_use") break;
+
+          const toolUses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+          messages.push({ role: "assistant", content: res.content });
+
+          const results: Anthropic.ToolResultBlockParam[] = [];
+          for (const tu of toolUses) {
+            const tool = toolByName.get(tu.name);
+            const input = (tu.input ?? {}) as Record<string, unknown>;
+            if (!tool) {
+              results.push({ type: "tool_result", tool_use_id: tu.id, content: "Unknown tool.", is_error: true });
+              continue;
+            }
+            controller.enqueue(sse({ t: "tool", name: tool.name }));
+            if (tool.kind === "read") {
+              try {
+                const out = await tool.run(input, ctx);
+                results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(out).slice(0, 12000) });
+              } catch (err) {
+                results.push({
+                  type: "tool_result",
+                  tool_use_id: tu.id,
+                  content: err instanceof ToolError ? err.message : "Tool failed.",
+                  is_error: true,
+                });
+              }
+            } else {
+              let summary = tool.description;
+              try {
+                summary = await tool.describe(input, ctx);
+              } catch {
+                /* keep default */
+              }
+              proposedActions.push({ id: randomUUID(), tool: tool.name, params: input, summary, status: "proposed" });
+              results.push({
+                type: "tool_result",
+                tool_use_id: tu.id,
+                content:
+                  "NOT PERFORMED — this action needs the user's confirmation. Tell the user in one sentence " +
+                  "what you will do, then stop.",
+              });
+            }
+          }
+          messages.push({ role: "user", content: results });
+
+          if (proposedActions.length) {
+            controller.enqueue(sse({ t: "reset" }));
+            const finalStream = client.messages.stream({
+              model: getAgentModel(),
+              max_tokens: 400,
+              system,
+              messages,
+            });
+            finalStream.on("text", (delta) => controller.enqueue(sse({ t: "delta", v: delta })));
+            const fm = await finalStream.finalMessage();
+            const fb = fm.content.find((b): b is Anthropic.TextBlock => b.type === "text");
+            if (fb) reply = fb.text.trim();
+            break;
+          }
         }
+        if (!reply) reply = streamedAny ? reply : "Done.";
+      } catch (err) {
+        console.error("Assistant loop failed:", err);
+        controller.enqueue(sse({ t: "error", message: "Could not get a response." }));
+        controller.close();
+        return;
       }
-      messages.push({ role: "user", content: results });
-      if (proposedActions.length) {
-        // one more turn so the model can phrase the proposal, then we stop
-        const finalRes = await client.messages.create({
-          model: getAgentModel(),
-          max_tokens: 400,
-          system: SYSTEM_PROMPT + contextBlock,
-          messages,
-        });
-        const fb = finalRes.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-        if (fb) reply = fb.text.trim();
-        break;
-      }
-    }
-    if (!reply) reply = "Done.";
-  } catch (err) {
-    console.error("Assistant loop failed:", err);
-    return NextResponse.json({ error: "AIRequestFailed" }, { status: 502 });
-  }
 
-  const citedFiles = acceptedFiles.filter((f) => reply.includes(f.fileName));
+      const citedFiles = acceptedFiles.filter((f) => reply.includes(f.fileName));
+      await appendMessage({ threadId, role: "user", content: message });
+      const saved = await appendMessage({
+        threadId,
+        role: "assistant",
+        content: reply,
+        citedFileIds: citedFiles.map((f) => f.id),
+        actions: proposedActions.length ? (proposedActions as unknown as Prisma.InputJsonValue) : undefined,
+      });
+      await autoTitle(threadId, message);
+      const titled = await getThread(threadId, owner);
 
-  await appendMessage({ threadId: thread.id, role: "user", content: message });
-  const saved = await appendMessage({
-    threadId: thread.id,
-    role: "assistant",
-    content: reply,
-    citedFileIds: citedFiles.map((f) => f.id),
-    actions: proposedActions.length ? (proposedActions as unknown as Prisma.InputJsonValue) : undefined,
+      controller.enqueue(
+        sse({
+          t: "done",
+          threadId,
+          messageId: saved.id,
+          reply,
+          citedFiles,
+          actions: proposedActions,
+          title: titled?.title ?? threadTitle,
+        })
+      );
+      controller.close();
+    },
   });
 
-  await autoTitle(thread.id, message);
-  const titled = await getThread(thread.id, owner);
-
-  return NextResponse.json({
-    threadId: thread.id,
-    messageId: saved.id,
-    reply,
-    citedFiles,
-    actions: proposedActions,
-    title: titled?.title ?? thread.title,
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store, no-transform",
+      Connection: "keep-alive",
+    },
   });
 }

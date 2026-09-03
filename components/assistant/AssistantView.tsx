@@ -234,14 +234,19 @@ export function AssistantView({
     const askedByVoice = askedByVoiceRef.current;
     askedByVoiceRef.current = false;
 
+    const streamingId = `stream-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
       { id: `local-${Date.now()}`, role: "user", content: text, citedFiles: [], actions: [] },
+      { id: streamingId, role: "assistant", content: "", citedFiles: [], actions: [] },
     ]);
     setInput("");
     setError(null);
     setSending(true);
     primeAudio();
+
+    const patchStreaming = (fn: (m: MessageState) => MessageState) =>
+      setMessages((prev) => prev.map((m) => (m.id === streamingId ? fn(m) : m)));
 
     try {
       const res = await fetch("/api/assistant", {
@@ -254,23 +259,61 @@ export function AssistantView({
           focusedPatientId: focusedPatient?.id ?? null,
         }),
       });
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
+        setMessages((prev) => prev.filter((m) => m.id !== streamingId));
         setError("Could not get a response. Please try again.");
         return;
       }
-      const data = await res.json();
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let done: {
+        threadId: string;
+        messageId: string;
+        reply: string;
+        title: string;
+        citedFiles?: { id: string; fileName: string }[];
+        actions?: ProposedAction[];
+      } | null = null;
+
+      for (;;) {
+        const { value, done: streamDone } = await reader.read();
+        if (streamDone) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          const evt = JSON.parse(line.slice(6));
+          if (evt.t === "delta") {
+            patchStreaming((m) => ({ ...m, content: m.content + evt.v }));
+          } else if (evt.t === "reset") {
+            patchStreaming((m) => ({ ...m, content: "" }));
+          } else if (evt.t === "error") {
+            setError(evt.message ?? "Could not get a response.");
+          } else if (evt.t === "done") {
+            done = evt;
+          }
+        }
+      }
+
+      if (!done) {
+        setError((e) => e ?? "Could not get a response. Please try again.");
+        setMessages((prev) => prev.filter((m) => m.id !== streamingId || m.content));
+        return;
+      }
+      const data = done;
       const isNew = !threadId;
       setThreadId(data.threadId);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: data.messageId,
-          role: "assistant",
-          content: data.reply,
-          citedFiles: data.citedFiles ?? [],
-          actions: (data.actions ?? []) as ProposedAction[],
-        },
-      ]);
+      patchStreaming((m) => ({
+        ...m,
+        id: data.messageId,
+        content: data.reply,
+        citedFiles: data.citedFiles ?? [],
+        actions: (data.actions ?? []) as ProposedAction[],
+      }));
       if (isNew) {
         setThreads((prev) => [
           { id: data.threadId, title: data.title, focusedPatientId: focusedPatient?.id ?? null, archived: false },
@@ -548,7 +591,7 @@ export function AssistantView({
                 </div>
               )
             )}
-            {sending && (
+            {sending && !messages.some((m) => m.id.startsWith("stream-") && m.content) && (
               <div className="flex items-center gap-1 text-xs text-slate-400">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400 [animation-delay:0.15s]" />
