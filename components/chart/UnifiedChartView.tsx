@@ -167,7 +167,9 @@ export function UnifiedChartView({ patient, staff, currentStaffDepartment }: Uni
           </Card>
         </div>
 
-        <NotesSection patientId={patient.id} notes={patient.notes} staff={staff} />
+        <div id="clinical-notes" className="scroll-mt-20">
+          <NotesSection patientId={patient.id} notes={patient.notes} staff={staff} />
+        </div>
 
         {patient.followUpItems.length > 0 && <FollowUpsSection items={patient.followUpItems} />}
 

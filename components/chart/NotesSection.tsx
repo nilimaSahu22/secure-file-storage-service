@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
-import { FileText, Plus, Sparkles, ShieldCheck, Download, Loader2, PenLine } from "lucide-react";
+import { FileText, Plus, Sparkles, ShieldCheck, Download, Loader2, PenLine, ChevronDown, ChevronUp } from "lucide-react";
 import type {
   ClinicalNote,
   CodingSuggestion,
@@ -67,6 +67,7 @@ export function NotesSection({ patientId, notes, staff }: NotesSectionProps) {
   const [submitting, setSubmitting] = useState(false);
   const [suggestingFor, setSuggestingFor] = useState<string | null>(null);
   const [downloadingVisit, setDownloadingVisit] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -124,7 +125,7 @@ export function NotesSection({ patientId, notes, staff }: NotesSectionProps) {
         <EmptyState label="No notes on file." />
       ) : (
         <div className="flex flex-col gap-3">
-          {notes.map((note) => {
+          {(showAll ? notes : notes.slice(0, 1)).map((note) => {
             const visit = note.visit;
             const isDraftVisit = visit?.status === "DRAFT";
             const isSignedVisit = visit?.status === "SIGNED";
@@ -249,6 +250,23 @@ export function NotesSection({ patientId, notes, staff }: NotesSectionProps) {
               </div>
             );
           })}
+
+          {notes.length > 1 && (
+            <button
+              onClick={() => setShowAll((v) => !v)}
+              className="flex items-center justify-center gap-1 rounded-lg border border-slate-200 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50"
+            >
+              {showAll ? (
+                <>
+                  <ChevronUp size={13} /> Show only the latest note
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={13} /> Show {notes.length - 1} earlier note{notes.length - 1 > 1 ? "s" : ""}
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 

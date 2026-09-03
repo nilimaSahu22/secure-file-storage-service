@@ -149,7 +149,7 @@ export function VisitReviewClient({
       }
       // Generate the patient-facing summary from the freshly signed record.
       await fetch(`/api/visits/${visitId}/patient-summary`, { method: "POST" }).catch(() => null);
-      router.push(`/dashboard/patients/${patientId}`);
+      router.push(`/dashboard/patients/${patientId}#clinical-notes`);
     } catch {
       setError("Could not sign the visit. Please try again.");
       setSigning(false);
