@@ -35,7 +35,7 @@ export function FollowUpChecklist({ items }: { items: FollowUpItem[] }) {
       <CardTitle className="mb-3 flex items-center gap-1.5">
         <ClipboardList size={14} /> Reminders
       </CardTitle>
-      <div className="flex flex-col gap-4">
+      <div className="flex max-h-[32rem] flex-col gap-4 overflow-y-auto pr-1">
         {GROUPS.map((group) => {
           const groupItems = items.filter((i) => group.kinds.includes(i.kind));
           if (groupItems.length === 0) return null;
