@@ -12,6 +12,7 @@ import { VitalsSection } from "@/components/chart/VitalsSection";
 import { NotesSection } from "@/components/chart/NotesSection";
 import { FollowUpsSection } from "@/components/chart/FollowUpsSection";
 import { TrendFlagsCard } from "@/components/chart/TrendFlagsCard";
+import { TestResultsSection } from "@/components/chart/TestResultsSection";
 import { TasksSection } from "@/components/chart/TasksSection";
 import { PriorAuthSection } from "@/components/chart/PriorAuthSection";
 import { ReferralsSection } from "@/components/chart/ReferralsSection";
@@ -113,32 +114,7 @@ export function UnifiedChartView({ patient, staff, currentStaffDepartment }: Uni
           <MedicationsSection patientId={patient.id} medications={patient.medications} allergies={patient.allergies} />
           <VitalsSection patientId={patient.id} vitals={patient.vitals} />
 
-          <Card>
-            <CardTitle className="mb-3">Test Results</CardTitle>
-            {patient.testResults.length === 0 ? (
-              <EmptyState label="No test results on file." />
-            ) : (
-              <div className="flex flex-col gap-2">
-                {patient.testResults.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                    <div>
-                      <p className="font-medium text-slate-900">{t.testName}</p>
-                      <p className="text-xs text-slate-500">
-                        {t.normalRange ? `Normal: ${t.normalRange}` : "No reference range"}
-                      </p>
-                      {t.enteredByAI && (
-                        <p className="mt-0.5 text-xs text-amber-700">From uploaded document — unverified</p>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium text-slate-900">{t.result}</p>
-                      <p className="text-xs text-slate-400">{format(t.recordedAt, "MMM d, yyyy")}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          <TestResultsSection results={patient.testResults} />
 
           <Card>
             <CardTitle className="mb-3 flex items-center gap-1.5">
