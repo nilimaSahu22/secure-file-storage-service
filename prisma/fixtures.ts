@@ -413,6 +413,13 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
         status: "OUTSTANDING",
         createdAt: haroldVisitSignedAt,
       },
+      {
+        patientId: haroldId,
+        kind: "RESULT_AVAILABLE",
+        description: "New result available: Creatinine",
+        status: "OUTSTANDING",
+        createdAt: daysAgo(1),
+      },
     ],
   });
   await prisma.patientVisitSummary.create({
