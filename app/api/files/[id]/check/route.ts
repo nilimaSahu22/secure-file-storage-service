@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { getAnthropicClient, getDocModel } from "@/lib/ai/client";
 import { getObjectBytes, cheapDocumentChecks, finalizeFileDecision } from "@/lib/services/files";
+import { applyExtraction, matchFollowUps } from "@/lib/services/documentExtraction";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -33,6 +34,19 @@ export const documentCheckSchema = z.object({
   keyFindings: z.array(z.string()).max(10),
   criticalValues: z.array(z.string()).max(10),
   issues: z.array(z.string()).max(10),
+  fullText: z.string(),
+  diagnoses: z.array(z.string()).max(10),
+  tests: z
+    .array(
+      z.object({
+        name: z.string(),
+        value: z.string(),
+        unit: z.string().nullable(),
+        referenceRange: z.string().nullable(),
+        date: z.string().nullable(),
+      })
+    )
+    .max(30),
 });
 
 export type DocumentCheck = z.infer<typeof documentCheckSchema>;
@@ -45,8 +59,10 @@ function buildPrompt(name: string, dob: string) {
     `document's date; the patient name and identifiers visible on it; whether that identity matches ` +
     `the account holder ("match", "mismatch", or "unclear" — use "unclear" when the name is partial or ` +
     `ambiguous, or the scan is too poor to tell); whether the scan is legible; key clinical findings; ` +
-    `any critical or abnormal values; and any quality or legibility issues. Do not diagnose. Use only ` +
-    `what is visible in the document.`
+    `any critical or abnormal values; and any quality or legibility issues. Also transcribe the ` +
+    `clinically relevant text into fullText; list any named diagnoses; and extract every discrete test ` +
+    `result as {name, value, unit, referenceRange, date}. Do not diagnose, and do not compute or infer ` +
+    `values that are not printed. Use only what is visible in the document.`
   );
 }
 
@@ -102,7 +118,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
           };
     const response = await client.messages.parse({
       model: getDocModel(),
-      max_tokens: 1024,
+      max_tokens: 2048,
       messages: [
         {
           role: "user",
@@ -144,11 +160,37 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
   const updated = await finalizeFileDecision(id, {
     status,
     validation: check
-      ? { ...check, cheapIssues: cheap.issues }
+      ? {
+          documentType: check.documentType,
+          documentDate: check.documentDate,
+          patientNameOnDocument: check.patientNameOnDocument,
+          identityMatch: check.identityMatch,
+          identityRationale: check.identityRationale,
+          readable: check.readable,
+          keyFindings: check.keyFindings,
+          criticalValues: check.criticalValues,
+          issues: check.issues,
+          diagnoses: check.diagnoses,
+          cheapIssues: cheap.issues,
+        }
       : { cheapIssues: cheap.issues, aiUnavailable: true },
     documentDate: documentDate && !Number.isNaN(documentDate.getTime()) ? documentDate : null,
     bounceReason,
   });
+
+  if (status === FileStatus.ACCEPTED && check) {
+    try {
+      await applyExtraction(id, {
+        fullText: check.fullText,
+        diagnoses: check.diagnoses,
+        tests: check.tests,
+        documentDate: check.documentDate,
+      });
+      await matchFollowUps(file.patientId);
+    } catch (err) {
+      console.error("Document extraction / follow-up match failed:", err);
+    }
+  }
 
   await logAudit({
     actorType: session.user.type === "patient" ? "patient" : "staff",

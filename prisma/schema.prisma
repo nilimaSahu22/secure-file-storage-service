@@ -74,6 +74,21 @@ enum FileSource {
   PATIENT
 }
 
+enum FollowUpKind {
+  TEST
+  IMAGING
+  APPOINTMENT
+  REFERRAL
+  RESULT_AVAILABLE
+  OTHER
+}
+
+enum FollowUpStatus {
+  OUTSTANDING
+  COMPLETED
+  DISMISSED
+}
+
 enum Department {
   RADIOLOGY
   OPD
@@ -122,6 +137,7 @@ model Patient {
   visits         Visit[]
   prescriptions  Prescription[]
   visitSummaries PatientVisitSummary[]
+  followUpItems  FollowUpItem[]
   tasks          Task[]
   priorAuths     PriorAuthorization[]
   referrals      Referral[]
@@ -176,13 +192,17 @@ model VitalSign {
 }
 
 model TestResult {
-  id          String   @id @default(uuid())
-  patientId   String
-  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  testName    String
-  result      String
-  normalRange String?
-  recordedAt  DateTime @default(now())
+  id           String       @id @default(uuid())
+  patientId    String
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  testName     String
+  result       String
+  normalRange  String?
+  recordedAt   DateTime     @default(now())
+  documentDate DateTime?
+  enteredByAI  Boolean      @default(false)
+  sourceFileId String?
+  sourceFile   MedicalFile? @relation(fields: [sourceFileId], references: [id], onDelete: SetNull)
 
   @@index([patientId])
 }
@@ -220,6 +240,7 @@ model Visit {
   note           ClinicalNote?
   prescription   Prescription?
   patientSummary PatientVisitSummary?
+  followUpItems  FollowUpItem[]
   medications    Medication[]
 
   @@index([patientId])
@@ -279,6 +300,23 @@ model PrescriptionItem {
   createdAt      DateTime     @default(now())
 
   @@index([prescriptionId])
+}
+
+model FollowUpItem {
+  id                      String         @id @default(uuid())
+  patientId               String
+  patient                 Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  visitId                 String?
+  visit                   Visit?         @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  kind                    FollowUpKind
+  description             String
+  dueAt                   DateTime?
+  status                  FollowUpStatus @default(OUTSTANDING)
+  satisfiedByFileId       String?
+  satisfiedByTestResultId String?
+  createdAt               DateTime       @default(now())
+
+  @@index([patientId, status])
 }
 
 model PatientVisitSummary {
@@ -397,6 +435,8 @@ model MedicalFile {
   validation        Json?
   bounceReason      String?
   createdAt         DateTime    @default(now())
+
+  testResults TestResult[]
 
   @@index([patientId])
   @@index([patientId, contentHash])

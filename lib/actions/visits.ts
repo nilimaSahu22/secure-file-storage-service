@@ -14,6 +14,7 @@ import {
   VisitLockedError,
   type UpdateDraftVisitInput,
 } from "@/lib/services/visits";
+import { generateFollowUpsForVisit } from "@/lib/services/followUps";
 
 async function requireStaff() {
   const session = await auth();
@@ -84,6 +85,12 @@ export async function signVisitAction(visitId: string, input: UpdateDraftVisitIn
     if (!(err instanceof S3NotConfiguredError)) {
       console.error("Prescription PDF generation failed:", err);
     }
+  }
+
+  try {
+    await generateFollowUpsForVisit(visitId);
+  } catch (err) {
+    console.error("Follow-up generation failed:", err);
   }
 
   await logAudit({

@@ -220,6 +220,7 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   // Delete in FK-safe order (children before parents).
   await prisma.codingSuggestion.deleteMany();
   await prisma.task.deleteMany();
+  await prisma.followUpItem.deleteMany();
   await prisma.patientVisitSummary.deleteMany();
   await prisma.prescriptionItem.deleteMany();
   await prisma.prescription.deleteMany();
@@ -382,6 +383,37 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
       prescribedById: staffByKey.get("drRamirez")!,
       prescribedAt: haroldVisitSignedAt,
     },
+  });
+  await prisma.followUpItem.createMany({
+    data: [
+      {
+        patientId: haroldId,
+        visitId: haroldVisit.id,
+        kind: "TEST",
+        description: "Basic metabolic panel",
+        dueAt: daysFromNow(28),
+        status: "OUTSTANDING",
+        createdAt: haroldVisitSignedAt,
+      },
+      {
+        patientId: haroldId,
+        visitId: haroldVisit.id,
+        kind: "TEST",
+        description: "HbA1c",
+        dueAt: daysFromNow(28),
+        status: "OUTSTANDING",
+        createdAt: haroldVisitSignedAt,
+      },
+      {
+        patientId: haroldId,
+        visitId: haroldVisit.id,
+        kind: "APPOINTMENT",
+        description: "Attend your follow-up visit",
+        dueAt: daysFromNow(28),
+        status: "OUTSTANDING",
+        createdAt: haroldVisitSignedAt,
+      },
+    ],
   });
   await prisma.patientVisitSummary.create({
     data: {

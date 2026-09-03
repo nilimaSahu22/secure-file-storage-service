@@ -28,7 +28,8 @@ export function getPatientById(id: string) {
       medications: { orderBy: { prescribedAt: "desc" } },
       allergies: true,
       vitals: { orderBy: { recordedAt: "desc" } },
-      testResults: { orderBy: { recordedAt: "desc" } },
+      testResults: { orderBy: { recordedAt: "desc" }, include: { sourceFile: true } },
+      followUpItems: { orderBy: [{ status: "asc" }, { dueAt: "asc" }] },
       notes: {
         orderBy: { createdAt: "desc" },
         include: {

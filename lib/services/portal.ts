@@ -7,6 +7,10 @@ export function getPatientPortalData(patientId: string) {
       appointments: { orderBy: { scheduledAt: "desc" }, include: { provider: true } },
       files: { orderBy: [{ category: "asc" }, { version: "desc" }] },
       chatMessages: { where: { actorType: "PATIENT" }, orderBy: { createdAt: "asc" } },
+      followUpItems: {
+        where: { status: "OUTSTANDING" },
+        orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }],
+      },
       visits: {
         where: { status: "SIGNED" },
         orderBy: { signedAt: "desc" },

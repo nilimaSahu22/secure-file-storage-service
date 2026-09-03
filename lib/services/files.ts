@@ -92,14 +92,6 @@ export async function confirmUpload(input: ConfirmUploadInput): Promise<MedicalF
     orderBy: { version: "desc" },
   });
 
-  let extractedText: string | null = null;
-  if (mimeType === "application/pdf") {
-    extractedText = await extractPdfText(storageKey).catch((err) => {
-      console.error("PDF text extraction failed:", err);
-      return null;
-    });
-  }
-
   return prisma.medicalFile.create({
     data: {
       patientId,
@@ -113,7 +105,6 @@ export async function confirmUpload(input: ConfirmUploadInput): Promise<MedicalF
       department: department ?? null,
       version: previous ? previous.version + 1 : 1,
       previousVersionId: previous?.id,
-      extractedText,
       status: FileStatus.ACCEPTED,
       source: FileSource.STAFF,
     },
@@ -254,25 +245,6 @@ export async function deleteObject(storageKey: string): Promise<void> {
   const env = getS3Env();
   const client = getS3Client();
   await client.send(new DeleteObjectCommand({ Bucket: env.AWS_S3_BUCKET, Key: storageKey }));
-}
-
-async function extractPdfText(storageKey: string): Promise<string | null> {
-  const env = getS3Env();
-  const client = getS3Client();
-  const response = await client.send(new GetObjectCommand({ Bucket: env.AWS_S3_BUCKET, Key: storageKey }));
-  if (!response.Body) return null;
-
-  const bytes = await response.Body.transformToByteArray();
-  // Imported lazily: pdf-parse/pdfjs-dist reference browser globals that break
-  // module evaluation in serverless runtimes, so only the PDF path pays that cost.
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: Buffer.from(bytes) });
-  try {
-    const result = await parser.getText();
-    return result.text || null;
-  } finally {
-    await parser.destroy();
-  }
 }
 
 /** Upload a server-generated object (e.g. a rendered PDF) straight to S3. */

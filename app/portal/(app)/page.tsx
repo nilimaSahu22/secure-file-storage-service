@@ -5,6 +5,7 @@ import { CalendarClock, Stethoscope } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { getPatientPortalData } from "@/lib/services/portal";
 import { Card, CardTitle } from "@/components/ui/Card";
+import { FollowUpChecklist } from "@/components/portal/FollowUpChecklist";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,8 @@ export default async function PortalHomePage() {
         <h1 className="text-xl font-semibold text-slate-900">Welcome back, {data.firstName}</h1>
         <p className="text-sm text-slate-500">Here&apos;s what&apos;s coming up.</p>
       </div>
+
+      <FollowUpChecklist items={data.followUpItems} />
 
       {latestVisit && latestSummary && (
         <Card>
