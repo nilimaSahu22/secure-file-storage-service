@@ -144,7 +144,11 @@ export function VisitReviewClient({
     try {
       const res = await signVisitAction(visitId, buildInput());
       if (!res.ok) {
-        setError("This visit is already signed.");
+        setError(
+          res.error === "stale_session"
+            ? "Your session is out of date. Please log out and back in, then sign the visit again."
+            : "This visit is already signed."
+        );
         return;
       }
       // Generate the patient-facing summary from the freshly signed record.

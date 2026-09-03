@@ -34,16 +34,21 @@ export async function POST(request: NextRequest) {
   }
 
   const actorType: ChatActorType = session.user.type === "patient" ? ChatActorType.PATIENT : ChatActorType.DOCTOR;
-  const staffId = session.user.type === "staff" ? session.user.id : undefined;
 
-  const [patient, history] = await Promise.all([
+  const [patient, history, staff] = await Promise.all([
     getPatientById(patientId),
     prisma.chatMessage.findMany({
       where: { patientId, actorType },
       orderBy: { createdAt: "asc" },
       take: MAX_HISTORY_MESSAGES,
     }),
+    // Resolve the staff row so a session left over from an earlier DB reset
+    // (stale JWT → non-existent staff id) doesn't trip the staffId foreign key.
+    session.user.type === "staff"
+      ? prisma.staffUser.findUnique({ where: { id: session.user.id }, select: { id: true } })
+      : Promise.resolve(null),
   ]);
+  const staffId = staff?.id;
 
   if (!patient) {
     return NextResponse.json({ error: "NotFound" }, { status: 404 });
