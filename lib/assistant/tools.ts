@@ -18,6 +18,7 @@ import { getOutstandingFollowUps, completeFollowUp, dismissFollowUp } from "@/li
 import { getAllWorkflows } from "@/lib/services/workflows";
 import { getAuditLogs } from "@/lib/services/auditLog";
 import { computeTrendFlags } from "@/lib/services/trendFlags";
+import { createDocumentRequest, listDocumentRequests } from "@/lib/services/documentRequests";
 import { logAudit } from "@/lib/audit";
 
 export interface ToolContext {
@@ -305,6 +306,24 @@ const readTools: ReadTool[] = [
     },
   },
   {
+    name: "list_document_requests",
+    description: "Documents the care team has asked a patient to upload, and their status.",
+    input_schema: obj({ patientId: strOpt("Patient id. Omit to use the patient in context.") }),
+    kind: "read",
+    async run(input, ctx) {
+      const patientId = resolvePatientId(ctx, input.patientId);
+      await assertPatientAllowed(ctx, patientId);
+      const rows = await listDocumentRequests(patientId);
+      return rows.map((r) => ({
+        documentRequestId: r.id,
+        type: r.documentType,
+        description: r.description,
+        status: r.status,
+        dueAt: r.dueAt?.toISOString().slice(0, 10) ?? null,
+      }));
+    },
+  },
+  {
     name: "search_audit_log",
     description: "Search the audit log by actor name, action, and date range. Admin only.",
     input_schema: obj({
@@ -560,6 +579,47 @@ const staffWriteTools: WriteTool[] = [
     },
   },
   {
+    name: "request_document",
+    description:
+      "Ask the patient to upload a specific document (e.g. a clinic letter or lab report). It shows on their portal as something to upload.",
+    input_schema: obj(
+      {
+        patientId: strOpt("Patient id. Omit to use the patient in context."),
+        documentType: str("Short label for the document, e.g. 'Cardiology clinic letter'."),
+        description: str("What exactly you need and why (shown to the patient)."),
+        dueBy: strOpt("ISO date the patient should upload it by."),
+      },
+      ["documentType", "description"]
+    ),
+    kind: "write",
+    async describe(input, ctx) {
+      const pid = resolvePatientId(ctx, input.patientId);
+      return `Ask ${await patientName(pid)} to upload: ${input.documentType} — ${input.description}.`;
+    },
+    async execute(input, ctx) {
+      if (!ctx.staffId) throw new ToolError("Your session is out of date — please log in again.");
+      const patientId = resolvePatientId(ctx, input.patientId);
+      const due = input.dueBy ? new Date(String(input.dueBy)) : null;
+      const req = await createDocumentRequest({
+        patientId,
+        requestedById: ctx.staffId,
+        documentType: String(input.documentType),
+        description: String(input.description),
+        dueAt: due && !Number.isNaN(due.getTime()) ? due : null,
+      });
+      await logAudit({
+        actorType: "staff",
+        actorId: ctx.staffId,
+        actorName: ctx.actorName,
+        action: "documentrequest.created",
+        targetType: "DocumentRequest",
+        targetId: req.id,
+        metadata: { patientId, documentType: String(input.documentType), via: "assistant" },
+      });
+      return { message: `Asked ${await patientName(patientId)} to upload their ${input.documentType}.` };
+    },
+  },
+  {
     name: "create_referral",
     description: "Create a referral from one provider to another for a patient.",
     input_schema: obj(
@@ -691,9 +751,9 @@ const patientWriteTools: WriteTool[] = [
 
 const STAFF_READ = ["find_patient", "get_patient_summary", "get_clinical_notes", "search_patient_documents",
   "list_appointments", "list_tasks", "list_prior_auths", "list_referrals", "list_visits", "list_followups",
-  "get_department_workflow", "get_providers", "check_trends", "search_audit_log"];
+  "list_document_requests", "get_department_workflow", "get_providers", "check_trends", "search_audit_log"];
 const PATIENT_READ = ["get_patient_summary", "get_clinical_notes", "search_patient_documents",
-  "list_appointments", "list_visits", "list_followups", "get_providers"];
+  "list_appointments", "list_visits", "list_followups", "list_document_requests", "get_providers"];
 
 export function getToolset(ctx: ToolContext): AssistantTool[] {
   if (ctx.ownerType === "patient") {

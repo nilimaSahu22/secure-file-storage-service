@@ -8,6 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { getAnthropicClient, getDocModel } from "@/lib/ai/client";
 import { getObjectBytes, cheapDocumentChecks, finalizeFileDecision } from "@/lib/services/files";
 import { applyExtraction, matchFollowUps } from "@/lib/services/documentExtraction";
+import { autoFulfillByType } from "@/lib/services/documentRequests";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -187,6 +188,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         documentDate: check.documentDate,
       });
       await matchFollowUps(file.patientId);
+      await autoFulfillByType(file.patientId, file.category, id);
     } catch (err) {
       console.error("Document extraction / follow-up match failed:", err);
     }

@@ -154,6 +154,14 @@ export function UnifiedChartView({ patient, staff, currentStaffDepartment }: Uni
           files={patient.files}
           defaultDepartment={currentStaffDepartment}
           canUpload={false}
+          documentRequests={patient.documentRequests.map((r) => ({
+            id: r.id,
+            documentType: r.documentType,
+            description: r.description,
+            status: r.status as "PENDING" | "FULFILLED" | "CANCELLED",
+            dueAt: r.dueAt ? r.dueAt.toISOString() : null,
+            requestedBy: r.requestedBy,
+          }))}
         />
 
         <div className="grid grid-cols-1 gap-6 min-[1201px]:grid-cols-2">

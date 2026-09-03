@@ -431,6 +431,18 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
       },
     ],
   });
+  await prisma.documentRequest.create({
+    data: {
+      patientId: haroldId,
+      requestedById: staffByKey.get("drRamirez")!,
+      documentType: "Cardiology clinic letter",
+      description:
+        "Please upload the letter from your recent cardiology appointment so we have their recommendations on file.",
+      dueAt: daysFromNow(14),
+      status: "PENDING",
+      createdAt: haroldVisitSignedAt,
+    },
+  });
   await prisma.patientVisitSummary.create({
     data: {
       visitId: haroldVisit.id,

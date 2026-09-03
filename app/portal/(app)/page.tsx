@@ -30,7 +30,15 @@ export default async function PortalHomePage() {
         <p className="text-sm text-slate-500">Here&apos;s what&apos;s coming up.</p>
       </div>
 
-      <FollowUpChecklist items={data.followUpItems} />
+      <FollowUpChecklist
+        items={data.followUpItems}
+        documentRequests={data.documentRequests.map((r) => ({
+          id: r.id,
+          documentType: r.documentType,
+          description: r.description,
+          dueAt: r.dueAt ? r.dueAt.toISOString() : null,
+        }))}
+      />
 
       {latestVisit && latestSummary && (
         <Card>
