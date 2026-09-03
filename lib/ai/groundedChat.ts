@@ -10,6 +10,7 @@ interface FileWithMaybeText {
   fileName: string;
   category: string;
   extractedText: string | null;
+  status?: string;
 }
 
 export const GROUNDED_CHAT_SYSTEM_PROMPT =
@@ -31,7 +32,10 @@ export function buildDocumentContext(files: FileWithMaybeText[]): {
   documents: GroundedChatDocument[];
 } {
   const documents = files.filter(
-    (f): f is GroundedChatDocument => !!f.extractedText && f.extractedText.trim().length > 0
+    (f): f is GroundedChatDocument =>
+      (f.status === undefined || f.status === "ACCEPTED") &&
+      !!f.extractedText &&
+      f.extractedText.trim().length > 0
   );
 
   if (documents.length === 0) {

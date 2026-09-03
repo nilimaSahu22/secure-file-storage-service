@@ -51,7 +51,7 @@ export function getPatientById(id: string) {
       },
       chartSummaries: { orderBy: { generatedAt: "desc" }, take: 1 },
       alerts: { orderBy: { triggeredAt: "desc" } },
-      files: { orderBy: [{ category: "asc" }, { version: "desc" }] },
+      files: { where: { status: "ACCEPTED" }, orderBy: [{ category: "asc" }, { version: "desc" }] },
       chatMessages: {
         where: { actorType: "DOCTOR" },
         orderBy: { createdAt: "asc" },

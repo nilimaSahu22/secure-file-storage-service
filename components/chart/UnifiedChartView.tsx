@@ -162,7 +162,12 @@ export function UnifiedChartView({ patient, staff, currentStaffDepartment }: Uni
 
         <NotesSection patientId={patient.id} notes={patient.notes} staff={staff} />
 
-        <FilesSection patientId={patient.id} files={patient.files} defaultDepartment={currentStaffDepartment} />
+        <FilesSection
+          patientId={patient.id}
+          files={patient.files}
+          defaultDepartment={currentStaffDepartment}
+          canUpload={false}
+        />
 
         <div className="grid grid-cols-1 gap-6 min-[1201px]:grid-cols-2">
           <TasksSection patientId={patient.id} tasks={patient.tasks} staff={staff} />

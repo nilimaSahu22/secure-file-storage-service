@@ -62,6 +62,18 @@ enum MedicationStatus {
   COMPLETED
 }
 
+enum FileStatus {
+  PENDING
+  ACCEPTED
+  BOUNCED
+  NEEDS_CLEARER_COPY
+}
+
+enum FileSource {
+  STAFF
+  PATIENT
+}
+
 enum Department {
   RADIOLOGY
   OPD
@@ -378,9 +390,16 @@ model MedicalFile {
   version           Int         @default(1)
   previousVersionId String?
   extractedText     String?     @db.Text
+  status            FileStatus  @default(ACCEPTED)
+  source            FileSource  @default(STAFF)
+  contentHash       String?
+  documentDate      DateTime?
+  validation        Json?
+  bounceReason      String?
   createdAt         DateTime    @default(now())
 
   @@index([patientId])
+  @@index([patientId, contentHash])
 }
 
 model ChatMessage {

@@ -13,3 +13,7 @@ export function getAnthropicClient(): Anthropic {
 export function getModel(): string {
   return getEnv().ANTHROPIC_MODEL;
 }
+
+export function getDocModel(): string {
+  return getEnv().ANTHROPIC_DOC_MODEL;
+}

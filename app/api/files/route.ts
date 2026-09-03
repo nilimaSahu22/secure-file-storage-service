@@ -21,7 +21,11 @@ export async function GET(request: NextRequest) {
   }
 
   const files = await prisma.medicalFile.findMany({
-    where: { patientId },
+    where: {
+      patientId,
+      // Staff only ever see documents that have cleared the intake check.
+      status: session.user.type === "staff" ? "ACCEPTED" : undefined,
+    },
     orderBy: [{ category: "asc" }, { version: "desc" }],
   });
 
