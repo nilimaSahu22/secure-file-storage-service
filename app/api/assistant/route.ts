@@ -206,7 +206,12 @@ export async function POST(request: NextRequest) {
         if (!reply) reply = streamedAny ? reply : "Done.";
       } catch (err) {
         console.error("Assistant loop failed:", err);
-        controller.enqueue(sse({ t: "error", message: "Could not get a response." }));
+        controller.enqueue(
+          sse({
+            t: "error",
+            message: err instanceof Error ? `Could not get a response: ${err.message}` : "Could not get a response.",
+          })
+        );
         controller.close();
         return;
       }
