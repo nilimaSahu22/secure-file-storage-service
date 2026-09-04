@@ -27,11 +27,13 @@ import {
   FolderLock,
   FolderSearch,
   CalendarClock,
+  AudioLines,
 } from "lucide-react";
 import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
 import { FocusedPatientPicker } from "@/components/assistant/FocusedPatientPicker";
 import { ThreadList, HomeChatToggle, type ThreadSummary } from "@/components/assistant/ThreadList";
 import { Markdown } from "@/components/assistant/Markdown";
+import { OrbSession } from "@/components/assistant/OrbSession";
 import type { AssistantMessageView } from "@/lib/services/assistant";
 
 export type { ThreadSummary } from "@/components/assistant/ThreadList";
@@ -151,6 +153,8 @@ export function AssistantView({
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ fileName: string; url: string } | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [orbOpen, setOrbOpen] = useState(false);
+  const orbOpenRef = useRef(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -247,9 +251,24 @@ export function AssistantView({
     onTranscript: (text, detectedLanguage) => {
       spokenLanguageRef.current = detectedLanguage;
       askedByVoiceRef.current = true;
-      setInput((prev) => (prev ? `${prev} ${text}` : text));
+      if (orbOpenRef.current) {
+        // Hands-free orb mode: speak, and the turn goes straight to the assistant.
+        void send(text);
+      } else {
+        setInput((prev) => (prev ? `${prev} ${text}` : text));
+      }
     },
   });
+
+  useEffect(() => {
+    orbOpenRef.current = orbOpen;
+  }, [orbOpen]);
+
+  function closeOrb() {
+    if (voice.recording) voice.stop();
+    stopSpeaking();
+    setOrbOpen(false);
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -546,6 +565,19 @@ export function AssistantView({
           className="block max-h-44 w-full resize-none bg-transparent px-4 pb-1.5 pt-3 text-sm text-slate-800 outline-none placeholder:text-slate-400"
         />
         <div className="flex items-center justify-end gap-1.5 px-2 pb-2">
+          {voice.supported && (
+            <button
+              type="button"
+              onClick={() => {
+                primeAudio();
+                setOrbOpen(true);
+              }}
+              aria-label="Open voice mode"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2f66ea] text-white transition-colors hover:bg-[#2554c7]"
+            >
+              <AudioLines size={15} />
+            </button>
+          )}
           {voice.supported && (
             <button
               type="button"
@@ -890,6 +922,24 @@ export function AssistantView({
             </div>
           </div>
         </div>
+      )}
+
+      {orbOpen && (
+        <OrbSession
+          recording={voice.recording}
+          transcribing={voice.transcribing}
+          sending={sending}
+          workLabel={workLabel}
+          speaking={!!speakingId}
+          voiceError={voice.error}
+          caption={messages.length ? messages[messages.length - 1].content.trim() || null : null}
+          onMicTap={() => {
+            primeAudio();
+            if (voice.recording) voice.stop();
+            else voice.start();
+          }}
+          onClose={closeOrb}
+        />
       )}
     </div>
   );
