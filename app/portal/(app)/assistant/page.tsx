@@ -38,7 +38,7 @@ export default async function PortalAssistantPage({
   }
 
   return (
-    <div className="-m-6">
+    <div className="-m-6 animate-[fade-in_200ms_ease-out]">
       <AssistantView
         ownerType="patient"
         withRail

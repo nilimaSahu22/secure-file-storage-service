@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { Heart, Home, CalendarDays, FolderLock, Sparkles, Stethoscope, LogOut } from "lucide-react";
-import { AssistantDock } from "@/components/assistant/AssistantDock";
 
 const NAV_ITEMS = [
   { href: "/portal", label: "Home", icon: Home },
@@ -57,7 +56,6 @@ export function PortalShell({ patientName, children }: { patientName: string; ch
         })}
       </nav>
       <main className="flex-1 p-6">{children}</main>
-      <AssistantDock ownerType="patient" />
     </div>
   );
 }

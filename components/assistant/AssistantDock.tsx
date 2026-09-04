@@ -1,116 +1,157 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { Sparkles } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { Loader2, Sparkles } from "lucide-react";
 import { AssistantView } from "@/components/assistant/AssistantView";
+import { useAssistant } from "@/components/assistant/AssistantController";
 import type { AssistantMessageView } from "@/lib/services/assistant";
 
 interface AssistantDockProps {
   ownerType: "staff" | "patient";
+  /** Left offset of the full-width panel (the width of any persistent app sidebar). */
+  fullInsetClass?: string;
+  /** The built-in Home/Chat rail (used by the patient portal, which has no app sidebar). */
+  withRail?: boolean;
 }
 
-const RESUME_KEY = "assistant:resume";
-const FULLSCREEN_PATH = { staff: "/dashboard/assistant", patient: "/portal/assistant" } as const;
-
-export function AssistantDock({ ownerType }: AssistantDockProps) {
-  const router = useRouter();
+export function AssistantDock({
+  ownerType,
+  fullInsetClass = "min-[1201px]:w-[calc(100vw-210px)]",
+  withRail = false,
+}: AssistantDockProps) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
-  const [resume, setResume] = useState<{ threadId: string; messages: AssistantMessageView[]; title?: string } | null>(
-    null
-  );
+  const { open, full, threadId, seq, openDocked, setFull, toggleFull, close } = useAssistant();
+  const [thread, setThread] = useState<{ messages: AssistantMessageView[]; title?: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [chartPatient, setChartPatient] = useState<{ id: string; name: string } | null>(null);
 
-  const onFullscreen = pathname?.startsWith(FULLSCREEN_PATH[ownerType]) ?? false;
-  const onChart = ownerType === "staff" && /^\/dashboard\/patients\/[^/]+$/.test(pathname ?? "");
-  const hidden = onFullscreen || onChart;
+  const chartId =
+    ownerType === "staff" ? pathname?.match(/^\/dashboard\/patients\/([^/]+)$/)?.[1] ?? null : null;
 
-  function close() {
-    setOpen(false);
-    setResume(null);
-  }
+  // Load a saved thread's messages when one is opened from the sidebar.
+  const handledSeq = useRef(-1);
+  const loadThread = useCallback((id: string | null) => {
+    setThread(null);
+    if (!id) return;
+    setLoading(true);
+    let stale = false;
+    fetch(`/api/assistant/threads/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (stale) return;
+        setThread(d ? { messages: d.messages ?? [], title: d.thread?.title } : { messages: [] });
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+    return () => {
+      stale = true;
+    };
+  }, []);
 
-  // Coming back from the full-screen Assistant via a Home link: pick the conversation up here.
   useEffect(() => {
-    if (hidden) return;
-    let rid: string | null = null;
-    try {
-      rid = sessionStorage.getItem(RESUME_KEY);
-    } catch {
-      rid = null;
+    if (handledSeq.current === seq) return;
+    handledSeq.current = seq;
+    return loadThread(threadId);
+  }, [threadId, seq, loadThread]);
+
+  // Scope the assistant to the chart you're viewing.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- scope to the current chart
+    setChartPatient(null);
+    if (!chartId) return;
+    let cancelled = false;
+    fetch(`/api/assistant/patients?id=${chartId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.patient) setChartPatient(d.patient);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [chartId]);
+
+  // Open (docked) the first time you land on a given chart.
+  const openedForChart = useRef<string | null>(null);
+  useEffect(() => {
+    if (chartId && openedForChart.current !== chartId) {
+      openedForChart.current = chartId;
+      openDocked();
     }
-    if (!rid) return;
-    try {
-      sessionStorage.removeItem(RESUME_KEY);
-    } catch {
-      /* ignore */
+  }, [chartId, openDocked]);
+
+  // Navigating to another page collapses a full panel back to the docked column.
+  const prevPath = useRef(pathname);
+  useEffect(() => {
+    if (pathname !== prevPath.current) {
+      prevPath.current = pathname;
+      if (full) setFull(false);
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOpen(true);
-    setResume(null);
-    if (rid === "new") return;
-    void (async () => {
-      try {
-        const res = await fetch(`/api/assistant/threads/${rid}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setResume({ threadId: rid as string, messages: data.messages ?? [], title: data.thread?.title });
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, [pathname, hidden]);
+  }, [pathname, full, setFull]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setOpen(false);
-        setResume(null);
-      }
+      if (e.key !== "Escape" || !open) return;
+      if (full) setFull(false);
+      else close();
     }
-    if (open) window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, full, close, setFull]);
 
-  if (hidden) return null;
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-[#2f66ea] px-4 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-[#2554c7]"
-      >
-        <Sparkles size={16} /> Ask AI
-      </button>
-    );
-  }
+  const widthClass = !open
+    ? "min-[1201px]:w-0 min-[1201px]:border-l-0"
+    : full
+      ? fullInsetClass
+      : "min-[1201px]:w-[400px]";
 
   return (
     <>
-      {/* Below 1201px the panel floats; at 1201px+ it is a real column that pushes the page. */}
+      {!open && (
+        <button
+          type="button"
+          onClick={openDocked}
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-[#2f66ea] px-4 py-3 text-sm font-medium text-white shadow-lg transition-transform hover:bg-[#2554c7] hover:-translate-y-0.5 active:translate-y-0"
+        >
+          <Sparkles size={16} /> Ask AI
+        </button>
+      )}
+
+      {/* Scrim: always on narrow screens while open; on wide screens only when full. */}
       <button
         aria-label="Close assistant"
-        onClick={close}
-        className="fixed inset-0 z-40 bg-slate-900/20 min-[1201px]:hidden"
+        tabIndex={open ? 0 : -1}
+        onClick={() => (full ? setFull(false) : close())}
+        className={`fixed inset-0 z-[45] bg-slate-900/25 transition-opacity duration-300 ${
+          open ? "opacity-100" : "pointer-events-none opacity-0"
+        } ${full ? "" : "min-[1201px]:hidden"}`}
       />
-      <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] animate-[slide-in-right_240ms_ease-out] flex-col border-l border-slate-200 bg-white shadow-2xl min-[1201px]:sticky min-[1201px]:inset-y-auto min-[1201px]:top-0 min-[1201px]:z-auto min-[1201px]:h-screen min-[1201px]:w-[400px] min-[1201px]:shrink-0 min-[1201px]:self-start min-[1201px]:animate-none min-[1201px]:shadow-none">
-        <AssistantView
-          key={resume?.threadId ?? "new"}
-          ownerType={ownerType}
-          variant="panel"
-          activeThreadId={resume?.threadId ?? null}
-          initialMessages={resume?.messages ?? []}
-          initialTitle={resume?.title}
-          focusedPatient={null}
-          onClose={close}
-          onExpand={(threadId) => {
-            close();
-            router.push(
-              threadId ? `${FULLSCREEN_PATH[ownerType]}?thread=${threadId}` : FULLSCREEN_PATH[ownerType]
-            );
-          }}
-        />
+
+      <aside
+        className={`fixed right-0 top-0 z-50 flex h-screen w-full max-w-[440px] flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl transition-[width,transform] duration-300 ease-out min-[1201px]:max-w-none min-[1201px]:shadow-xl ${
+          open ? "translate-x-0" : "translate-x-full min-[1201px]:translate-x-0"
+        } ${widthClass}`}
+      >
+        {open && loading ? (
+          <div className="flex flex-1 items-center justify-center text-slate-400">
+            <Loader2 size={18} className="animate-spin" />
+          </div>
+        ) : open ? (
+          <AssistantView
+            key={`${seq}:${threadId ?? chartPatient?.id ?? "new"}`}
+            ownerType={ownerType}
+            variant="panel"
+            withRail={withRail}
+            expanded={full}
+            activeThreadId={threadId}
+            initialMessages={thread?.messages ?? []}
+            initialTitle={thread?.title}
+            focusedPatient={chartPatient}
+            onClose={close}
+            onExpand={toggleFull}
+          />
+        ) : null}
       </aside>
     </>
   );

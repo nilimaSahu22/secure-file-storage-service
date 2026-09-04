@@ -6,7 +6,6 @@ import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { getAge, getInitials } from "@/lib/format";
 import { ChartActions } from "@/components/chart/ChartActions";
-import { ChartShell } from "@/components/chart/ChartShell";
 import { MedicationsSection } from "@/components/chart/MedicationsSection";
 import { VitalsSection } from "@/components/chart/VitalsSection";
 import { NotesSection } from "@/components/chart/NotesSection";
@@ -35,13 +34,7 @@ interface UnifiedChartViewProps {
 
 export function UnifiedChartView({ patient, staff, currentStaffDepartment }: UnifiedChartViewProps) {
   return (
-    <div className="p-6 max-[520px]:p-4">
-      <ChartShell
-        patientId={patient.id}
-        patientName={`${patient.firstName} ${patient.lastName}`}
-        initialMessages={patient.chatMessages}
-        files={patient.files}
-      >
+    <div className="flex flex-col gap-6 p-6 max-[520px]:p-4">
         <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-6 max-[520px]:p-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-100 text-lg font-semibold text-blue-700">
@@ -170,7 +163,6 @@ export function UnifiedChartView({ patient, staff, currentStaffDepartment }: Uni
         </div>
 
         <ReferralsSection patientId={patient.id} referrals={patient.referrals} staff={staff} />
-      </ChartShell>
     </div>
   );
 }
