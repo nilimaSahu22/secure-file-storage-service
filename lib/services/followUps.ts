@@ -112,3 +112,15 @@ export function completeFollowUp(id: string) {
 export function dismissFollowUp(id: string) {
   return prisma.followUpItem.update({ where: { id }, data: { status: FollowUpStatus.DISMISSED } });
 }
+
+/** Clear every outstanding "result available" item for a patient in one go. */
+export function markResultsSeen(patientId: string) {
+  return prisma.followUpItem.updateMany({
+    where: {
+      patientId,
+      kind: FollowUpKind.RESULT_AVAILABLE,
+      status: FollowUpStatus.OUTSTANDING,
+    },
+    data: { status: FollowUpStatus.COMPLETED },
+  });
+}

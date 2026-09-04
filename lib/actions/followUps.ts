@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
-import { completeFollowUp, dismissFollowUp } from "@/lib/services/followUps";
+import { completeFollowUp, dismissFollowUp, markResultsSeen } from "@/lib/services/followUps";
 
 async function authorizeFollowUp(id: string) {
   const session = await auth();
@@ -30,6 +30,22 @@ export async function completeFollowUpAction(id: string) {
   });
   revalidatePath("/portal");
   revalidatePath(`/dashboard/patients/${patientId}`);
+  return { ok: true };
+}
+
+export async function markResultsSeenAction() {
+  const session = await auth();
+  if (!session || session.user.type !== "patient") throw new Error("Unauthorized");
+  await markResultsSeen(session.user.id);
+  await logAudit({
+    actorType: "patient",
+    actorId: session.user.id,
+    actorName: session.user.name ?? "Unknown",
+    action: "followup.results_seen",
+    targetType: "FollowUpItem",
+  });
+  revalidatePath("/portal");
+  revalidatePath(`/dashboard/patients/${session.user.id}`);
   return { ok: true };
 }
 
