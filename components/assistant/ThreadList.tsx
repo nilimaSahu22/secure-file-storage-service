@@ -71,7 +71,7 @@ export function ThreadList({ threads, activeId, onOpen, onNewChat, onRename, onA
     if (v) onRename(id, v);
   }
 
-  const groups = threads ? groupThreads(threads) : [];
+  const groups = Array.isArray(threads) ? groupThreads(threads) : [];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
