@@ -2,10 +2,9 @@
 
 import { Mic, Square, X } from "lucide-react";
 import { Orb, type AgentState } from "@/components/ui/orb";
-import { LiveWaveform } from "@/components/ui/live-waveform";
 
 interface OrbSessionProps {
-  /** Mic is actively capturing audio. */
+  /** Mic is actively capturing audio (listening is fully autonomous — no tap needed). */
   recording: boolean;
   /** A captured clip is being transcribed server-side. */
   transcribing: boolean;
@@ -16,17 +15,21 @@ interface OrbSessionProps {
   /** The assistant's spoken reply is currently playing. */
   speaking: boolean;
   voiceError: string | null;
-  /** Most recent user or assistant line, shown as a caption under the orb. */
-  caption: string | null;
+  /**
+   * Contextual override: stop early while listening, interrupt while the assistant is
+   * talking, or manually restart if the hands-free loop ever stalls out.
+   */
   onMicTap: () => void;
   onClose: () => void;
 }
 
 /**
- * Full-screen hands-free voice mode: a reactive orb + live mic waveform standing in
- * for the chat while it runs. The underlying text conversation (AssistantView's
- * `messages`/`send()`) keeps going untouched — this is just a different view onto it,
- * so closing it drops straight back into the same thread, fully caught up.
+ * Full-screen hands-free voice mode: just a reactive orb standing in for the chat while
+ * it runs — listening starts the moment this opens and keeps looping turn after turn on
+ * its own (see the silence-based auto-stop in useVoiceInput), no tapping required. The
+ * generated reply text is intentionally not shown here; the underlying text conversation
+ * (AssistantView's `messages`/`send()`) keeps running underneath and is what's visible
+ * again the moment this closes.
  */
 export function OrbSession({
   recording,
@@ -35,7 +38,6 @@ export function OrbSession({
   workLabel,
   speaking,
   voiceError,
-  caption,
   onMicTap,
   onClose,
 }: OrbSessionProps) {
@@ -54,7 +56,10 @@ export function OrbSession({
         ? (workLabel ?? "Thinking") + "…"
         : agentState === "talking"
           ? "Speaking…"
-          : "Tap the mic to talk";
+          : "Go ahead, say something";
+
+  const busy = agentState === "thinking";
+  const stoppable = agentState === "listening" || agentState === "talking";
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
@@ -76,31 +81,20 @@ export function OrbSession({
         <p className="mt-4 min-h-[1.5em] max-w-md text-center text-sm font-medium text-slate-500">
           {statusLabel}
         </p>
-        {caption && (
-          <p className="mt-1 max-w-md text-center text-[13px] leading-relaxed text-slate-400">{caption}</p>
-        )}
         {voiceError && <p className="mt-2 text-center text-xs text-red-600">{voiceError}</p>}
       </div>
 
-      <div className="flex shrink-0 flex-col items-center gap-4 px-6 pb-10">
-        <div className="h-12 w-full max-w-sm">
-          <LiveWaveform
-            active={recording}
-            processing={transcribing || sending}
-            barColor="#2f66ea"
-            height={48}
-          />
-        </div>
+      <div className="flex shrink-0 flex-col items-center gap-2 px-6 pb-10">
         <button
           type="button"
           onClick={onMicTap}
-          disabled={transcribing || sending}
-          aria-label={recording ? "Stop listening" : "Start talking"}
+          disabled={busy}
+          aria-label={stoppable ? "Stop" : "Start talking"}
           className={`flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg transition-colors disabled:opacity-50 ${
-            recording ? "bg-red-500 hover:bg-red-600" : "bg-[#2f66ea] hover:bg-[#2554c7]"
+            stoppable ? "bg-red-500 hover:bg-red-600" : "bg-[#2f66ea] hover:bg-[#2554c7]"
           }`}
         >
-          {recording ? <Square size={22} className="fill-current" /> : <Mic size={24} />}
+          {stoppable ? <Square size={22} className="fill-current" /> : <Mic size={24} />}
         </button>
       </div>
     </div>

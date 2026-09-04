@@ -29,12 +29,20 @@ import {
   CalendarClock,
   AudioLines,
 } from "lucide-react";
-import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
+import { useVoiceInput, type AutoStopOptions } from "@/lib/hooks/useVoiceInput";
 import { FocusedPatientPicker } from "@/components/assistant/FocusedPatientPicker";
 import { ThreadList, HomeChatToggle, type ThreadSummary } from "@/components/assistant/ThreadList";
 import { Markdown } from "@/components/assistant/Markdown";
 import { OrbSession } from "@/components/assistant/OrbSession";
+import { LiveWaveform } from "@/components/ui/live-waveform";
+import { stripMarkdown } from "@/lib/text/markdown";
 import type { AssistantMessageView } from "@/lib/services/assistant";
+
+// Energy-based VAD tuning for the hands-free orb: end the turn once the speaker has
+// gone quiet for a beat after actually saying something. See useVoiceInput's
+// `attachAutoStop` for the algorithm. The composer's manual mic button doesn't pass
+// this — that one stays push-to-talk.
+const ORB_AUTO_LISTEN: AutoStopOptions = { silenceMs: 1100, minSpeechMs: 250, threshold: 0.045, maxDurationMs: 20000 };
 
 export type { ThreadSummary } from "@/components/assistant/ThreadList";
 
@@ -218,10 +226,13 @@ export function AssistantView({
         const res = await fetch("/api/speak", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
+          // Speak natural sentences, not literal markdown syntax — "star star bold star
+          // star" etc. is what TTS reads if you hand it raw **markdown**.
+          body: JSON.stringify({ text: stripMarkdown(text) }),
         });
         if (!res.ok) {
           setLoadingSpeechId(null);
+          resumeListening();
           return;
         }
         const decoded = await ctx.decodeAudioData(await res.arrayBuffer());
@@ -232,6 +243,7 @@ export function AssistantView({
         source.onended = () => {
           setSpeakingId(null);
           sourceRef.current = null;
+          resumeListening();
         };
         sourceRef.current = source;
         setLoadingSpeechId(null);
@@ -240,6 +252,7 @@ export function AssistantView({
       } catch {
         setLoadingSpeechId(null);
         setSpeakingId(null);
+        resumeListening();
       }
     },
     [primeAudio, stopSpeaking]
@@ -259,15 +272,31 @@ export function AssistantView({
       }
     },
   });
+  // Kept in sync every render so async callbacks (speak's onended, fired long after the
+  // render that created them) always see the latest `voice.start`/`recording`, not a
+  // stale closure from whichever render happened to be current when they were queued.
+  const voiceRef = useRef<ReturnType<typeof useVoiceInput> | null>(null);
+  useEffect(() => {
+    voiceRef.current = voice;
+  });
 
   useEffect(() => {
     orbOpenRef.current = orbOpen;
   }, [orbOpen]);
 
   function closeOrb() {
+    orbOpenRef.current = false; // synchronous — beats the effect above for in-flight callbacks
     if (voice.recording) voice.stop();
     stopSpeaking();
     setOrbOpen(false);
+  }
+
+  /** Resume the orb's hands-free listening loop for the next turn. No-op once it's closed. */
+  function resumeListening() {
+    if (!orbOpenRef.current) return;
+    const v = voiceRef.current;
+    if (!v || v.recording || v.transcribing) return;
+    void v.start(ORB_AUTO_LISTEN);
   }
 
   useEffect(() => {
@@ -363,6 +392,7 @@ export function AssistantView({
       if (!res.ok || !res.body) {
         setMessages((prev) => prev.filter((m) => m.id !== streamingId));
         setError("Could not get a response. Please try again.");
+        resumeListening();
         return;
       }
 
@@ -405,6 +435,7 @@ export function AssistantView({
       if (!done) {
         setError((e) => e ?? "Could not get a response. Please try again.");
         setMessages((prev) => prev.filter((m) => m.id !== streamingId || m.content));
+        resumeListening();
         return;
       }
       const data = done;
@@ -443,9 +474,14 @@ export function AssistantView({
       }
       if (askedByVoice && typeof data.reply === "string" && data.reply.trim()) {
         void speak(data.messageId, data.reply);
+      } else {
+        // Nothing to speak (empty reply, or asked by text) — the orb's turn is over,
+        // so pick listening back up straight away instead of waiting on speak() to.
+        resumeListening();
       }
     } catch {
       setError("Could not get a response. Please try again.");
+      resumeListening();
     } finally {
       setSending(false);
       setWorkLabel(null);
@@ -570,7 +606,9 @@ export function AssistantView({
               type="button"
               onClick={() => {
                 primeAudio();
+                orbOpenRef.current = true; // synchronous — the effect would land a render late
                 setOrbOpen(true);
+                void voice.start(ORB_AUTO_LISTEN);
               }}
               aria-label="Open voice mode"
               className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2f66ea] text-white transition-colors hover:bg-[#2554c7]"
@@ -608,13 +646,21 @@ export function AssistantView({
         </div>
       </form>
       {(voice.recording || voice.transcribing) && (
-        <p className="mt-1.5 flex items-center gap-1.5 px-1 text-xs italic text-slate-500">
-          <span className="relative flex h-2 w-2 items-center justify-center">
-            <span className="absolute h-2 w-2 animate-ping rounded-full bg-red-500 opacity-75" />
-            <span className="relative h-2 w-2 rounded-full bg-red-500" />
-          </span>
-          {voice.recording ? "Listening… tap the mic to stop." : "Transcribing…"}
-        </p>
+        <div className="mt-1.5 px-1">
+          <div className="h-7 w-full">
+            <LiveWaveform
+              active={voice.recording}
+              processing={voice.transcribing}
+              barColor="#2f66ea"
+              height={28}
+              barWidth={2}
+              barGap={1.5}
+            />
+          </div>
+          <p className="mt-0.5 text-center text-[11px] text-slate-400">
+            {voice.recording ? "Listening… tap the mic to stop." : "Transcribing…"}
+          </p>
+        </div>
       )}
       {voice.error && <p className="mt-1 px-1 text-xs text-red-600">{voice.error}</p>}
       {isEmpty && error && <p className="mt-1 px-1 text-xs text-red-600">{error}</p>}
@@ -932,11 +978,19 @@ export function AssistantView({
           workLabel={workLabel}
           speaking={!!speakingId}
           voiceError={voice.error}
-          caption={messages.length ? messages[messages.length - 1].content.trim() || null : null}
           onMicTap={() => {
             primeAudio();
-            if (voice.recording) voice.stop();
-            else voice.start();
+            if (voice.recording) {
+              // Manual early-out: don't wait for the silence timer.
+              voice.stop();
+            } else if (speakingId) {
+              // Barge in: cut the assistant off and start listening right away.
+              stopSpeaking();
+              resumeListening();
+            } else if (!voice.transcribing && !sending) {
+              // The hands-free loop stalled (e.g. a mic error) — give it a manual kick.
+              resumeListening();
+            }
           }}
           onClose={closeOrb}
         />
