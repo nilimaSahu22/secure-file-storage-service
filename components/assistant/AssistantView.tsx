@@ -31,6 +31,7 @@ import {
 import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
 import { FocusedPatientPicker } from "@/components/assistant/FocusedPatientPicker";
 import { ThreadList, HomeChatToggle, type ThreadSummary } from "@/components/assistant/ThreadList";
+import { Markdown } from "@/components/assistant/Markdown";
 import type { AssistantMessageView } from "@/lib/services/assistant";
 
 export type { ThreadSummary } from "@/components/assistant/ThreadList";
@@ -271,6 +272,16 @@ export function AssistantView({
     },
     [isPanel, params, router]
   );
+
+  // Let the app sidebar hand the live conversation to the docked panel when you navigate away.
+  useEffect(() => {
+    if (isPanel) return;
+    try {
+      sessionStorage.setItem("assistant:current", threadId ?? "");
+    } catch {
+      /* ignore */
+    }
+  }, [isPanel, threadId]);
 
   // Follow thread selections made from the app sidebar (the page's ?thread= changes).
   useEffect(() => {
@@ -761,8 +772,8 @@ export function AssistantView({
                     </div>
                   </div>
                 ) : (
-                  <div key={m.id} className="whitespace-pre-wrap text-[15px] leading-relaxed text-slate-800">
-                    {m.content}
+                  <div key={m.id} className="text-[15px] leading-relaxed text-slate-800">
+                    {m.content ? <Markdown>{m.content}</Markdown> : null}
                     {voice.supported && m.content.trim() && (
                       <button
                         type="button"
@@ -771,7 +782,7 @@ export function AssistantView({
                           else void speak(m.id, m.content);
                         }}
                         aria-label={speakingId === m.id ? "Stop" : "Play aloud"}
-                        className="ml-1.5 inline-flex h-5 w-5 -translate-y-px items-center justify-center rounded align-middle text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        className="mt-1 inline-flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                       >
                         {loadingSpeechId === m.id ? (
                           <Loader2 size={12} className="animate-spin" />
@@ -783,22 +794,34 @@ export function AssistantView({
                       </button>
                     )}
                     {m.citedFiles.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {m.citedFiles.map((f) => (
-                          <button
-                            key={f.id}
-                            onClick={() => openPreview(f.id, f.fileName)}
-                            disabled={previewingId === f.id}
-                            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-100"
-                          >
-                            {previewingId === f.id ? (
-                              <Loader2 size={11} className="animate-spin" />
-                            ) : (
-                              <FileText size={11} className="text-[#2f66ea]" />
-                            )}
-                            {f.fileName}
-                          </button>
-                        ))}
+                      <div className="mt-2.5 rounded-xl border border-slate-200 bg-slate-50/70 p-1.5">
+                        <p className="px-1.5 pb-1 pt-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                          {m.citedFiles.length === 1 ? "Source" : "Sources"}
+                        </p>
+                        <div className="flex flex-col gap-0.5">
+                          {m.citedFiles.map((f) => (
+                            <button
+                              key={f.id}
+                              onClick={() => openPreview(f.id, f.fileName)}
+                              disabled={previewingId === f.id}
+                              className="group flex items-center gap-2 rounded-lg px-1.5 py-1.5 text-left hover:bg-white"
+                            >
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-blue-50 text-[#2f66ea]">
+                                {previewingId === f.id ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                  <FileText size={13} />
+                                )}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-700">
+                                {f.fileName}
+                              </span>
+                              <span className="shrink-0 text-[11px] text-slate-400 group-hover:text-[#2f66ea]">
+                                Preview
+                              </span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
                     {m.actions.map((a) => (

@@ -104,12 +104,19 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
   // When leaving the full-screen Assistant via a Home link, hand the conversation to the docked panel.
   function handleHomeNav() {
     setMenuOpen(false);
-    if (onAssistant && activeThreadId) {
+    if (!onAssistant) return;
+    let current = activeThreadId;
+    if (!current) {
       try {
-        sessionStorage.setItem(RESUME_KEY, activeThreadId);
+        current = sessionStorage.getItem("assistant:current") || null;
       } catch {
-        /* ignore */
+        current = null;
       }
+    }
+    try {
+      sessionStorage.setItem(RESUME_KEY, current || "new");
+    } catch {
+      /* ignore */
     }
   }
 

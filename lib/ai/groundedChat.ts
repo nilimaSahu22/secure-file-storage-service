@@ -21,8 +21,9 @@ export const GROUNDED_CHAT_SYSTEM_PROMPT =
   "medical knowledge to fill gaps. If neither source contains the answer, say so plainly " +
   "instead of guessing. When you use information from a document, reference it by its " +
   'exact file name (e.g. "According to \\"Discharge Summary.pdf\\"..."); information from ' +
-  'the structured data can be referred to as "the patient chart". Respond in plain prose ' +
-  "only, no markdown, no headers, no bullet points. Keep answers brief and directly " +
+  'the structured data can be referred to as "the patient chart". You may use light Markdown ' +
+  "(bold labels, short bullet lists) where it aids readability, but no headings or code blocks. " +
+  "Keep answers brief and directly " +
   "responsive to the question. Reply in the same language the user wrote their most " +
   "recent message in; if that is unclear, reply in English. Keep document file names " +
   "verbatim even when replying in another language.";

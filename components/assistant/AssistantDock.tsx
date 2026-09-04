@@ -47,6 +47,8 @@ export function AssistantDock({ ownerType }: AssistantDockProps) {
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpen(true);
+    setResume(null);
+    if (rid === "new") return;
     void (async () => {
       try {
         const res = await fetch(`/api/assistant/threads/${rid}`);
@@ -61,7 +63,10 @@ export function AssistantDock({ ownerType }: AssistantDockProps) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        setResume(null);
+      }
     }
     if (open) window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -69,45 +74,44 @@ export function AssistantDock({ ownerType }: AssistantDockProps) {
 
   if (hidden) return null;
 
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-[#2f66ea] px-4 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-[#2554c7]"
+      >
+        <Sparkles size={16} /> Ask AI
+      </button>
+    );
+  }
+
   return (
     <>
-      {!open && (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-[#2f66ea] px-4 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-[#2554c7]"
-        >
-          <Sparkles size={16} /> Ask AI
-        </button>
-      )}
-
-      {open && (
-        <>
-          <button
-            aria-label="Close assistant"
-            onClick={close}
-            className="fixed inset-0 z-40 bg-slate-900/20 md:hidden"
-          />
-          <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] animate-[slide-in-right_240ms_ease-out] flex-col border-l border-slate-200 bg-white shadow-2xl">
-            <AssistantView
-              key={resume?.threadId ?? "new"}
-              ownerType={ownerType}
-              variant="panel"
-              activeThreadId={resume?.threadId ?? null}
-              initialMessages={resume?.messages ?? []}
-              initialTitle={resume?.title}
-              focusedPatient={null}
-              onClose={close}
-              onExpand={(threadId) => {
-                close();
-                router.push(
-                  threadId ? `${FULLSCREEN_PATH[ownerType]}?thread=${threadId}` : FULLSCREEN_PATH[ownerType]
-                );
-              }}
-            />
-          </div>
-        </>
-      )}
+      {/* Below 1201px the panel floats; at 1201px+ it is a real column that pushes the page. */}
+      <button
+        aria-label="Close assistant"
+        onClick={close}
+        className="fixed inset-0 z-40 bg-slate-900/20 min-[1201px]:hidden"
+      />
+      <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] animate-[slide-in-right_240ms_ease-out] flex-col border-l border-slate-200 bg-white shadow-2xl min-[1201px]:sticky min-[1201px]:inset-y-auto min-[1201px]:top-0 min-[1201px]:z-auto min-[1201px]:h-screen min-[1201px]:w-[400px] min-[1201px]:shrink-0 min-[1201px]:self-start min-[1201px]:animate-none min-[1201px]:shadow-none">
+        <AssistantView
+          key={resume?.threadId ?? "new"}
+          ownerType={ownerType}
+          variant="panel"
+          activeThreadId={resume?.threadId ?? null}
+          initialMessages={resume?.messages ?? []}
+          initialTitle={resume?.title}
+          focusedPatient={null}
+          onClose={close}
+          onExpand={(threadId) => {
+            close();
+            router.push(
+              threadId ? `${FULLSCREEN_PATH[ownerType]}?thread=${threadId}` : FULLSCREEN_PATH[ownerType]
+            );
+          }}
+        />
+      </aside>
     </>
   );
 }
