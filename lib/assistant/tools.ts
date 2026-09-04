@@ -20,7 +20,7 @@ import { getAuditLogs } from "@/lib/services/auditLog";
 import { computeTrendFlags } from "@/lib/services/trendFlags";
 import { createDocumentRequest, listDocumentRequests } from "@/lib/services/documentRequests";
 import { logAudit } from "@/lib/audit";
-import { notifyStaff } from "@/lib/services/notifications";
+import { notifyStaff, notifyPatient } from "@/lib/services/notifications";
 
 export interface ToolContext {
   ownerType: "staff" | "patient";
@@ -408,6 +408,12 @@ const staffWriteTools: WriteTool[] = [
         targetId: apt.id,
         metadata: { patientId, via: "assistant" },
       });
+      await notifyPatient(patientId, {
+        category: "appointment",
+        title: "Appointment booked",
+        body: `Your care team scheduled a visit for ${fmtWhen(when.toISOString())}.`,
+        linkPath: "/portal/appointments",
+      });
       return { message: `Appointment booked for ${await patientName(patientId)} on ${fmtWhen(when.toISOString())}.` };
     },
   },
@@ -437,6 +443,12 @@ const staffWriteTools: WriteTool[] = [
         targetId: apt.id,
         metadata: { via: "assistant" },
       });
+      await notifyPatient(apt.patientId, {
+        category: "appointment",
+        title: "Appointment rescheduled",
+        body: `Your visit was moved to ${fmtWhen(when.toISOString())}.`,
+        linkPath: "/portal/appointments",
+      });
       return { message: `Appointment moved to ${fmtWhen(when.toISOString())}.` };
     },
   },
@@ -460,6 +472,12 @@ const staffWriteTools: WriteTool[] = [
         targetType: "Appointment",
         targetId: apt.id,
         metadata: { via: "assistant" },
+      });
+      await notifyPatient(apt.patientId, {
+        category: "appointment",
+        title: "Appointment cancelled",
+        body: `Your visit on ${fmtWhen(apt.scheduledAt.toISOString())} was cancelled.`,
+        linkPath: "/portal/appointments",
       });
       return { message: "Appointment cancelled." };
     },
@@ -624,6 +642,12 @@ const staffWriteTools: WriteTool[] = [
         targetType: "DocumentRequest",
         targetId: req.id,
         metadata: { patientId, documentType: String(input.documentType), via: "assistant" },
+      });
+      await notifyPatient(patientId, {
+        category: "document",
+        title: "Document requested",
+        body: `${ctx.actorName} asked you to upload: ${String(input.documentType)}.`,
+        linkPath: `/portal/documents?type=${encodeURIComponent(String(input.documentType))}`,
       });
       return { message: `Asked ${await patientName(patientId)} to upload their ${input.documentType}.` };
     },
