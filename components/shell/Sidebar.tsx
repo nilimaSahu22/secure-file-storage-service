@@ -62,7 +62,9 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
   const refetchThreads = useCallback(async () => {
     try {
       const res = await fetch("/api/assistant/threads");
-      if (res.ok) setThreads(await res.json());
+      if (!res.ok) return;
+      const data = await res.json();
+      setThreads(Array.isArray(data) ? data : (data.threads ?? []));
     } catch {
       /* ignore */
     }
