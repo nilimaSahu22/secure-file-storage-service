@@ -49,8 +49,8 @@ export function FocusedPatientPicker({
     <div ref={boxRef} className="relative">
       {value ? (
         <div className="flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 py-1 pl-2.5 pr-1 text-xs font-medium text-blue-800">
-          <UserRound size={12} />
-          {value.name || "Patient in focus"}
+          <UserRound size={12} className="shrink-0" />
+          <span className="max-w-[40vw] truncate sm:max-w-[160px]">{value.name || "Patient in focus"}</span>
           <button
             onClick={() => onChange(null)}
             aria-label="Clear focused patient"
@@ -69,7 +69,10 @@ export function FocusedPatientPicker({
       )}
 
       {open && !value && (
-        <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+        // Anchored left, clamped to the viewport: the trigger sits near the left edge of
+        // its row on mobile, so a right-anchored fixed-width panel would render mostly
+        // off-screen there.
+        <div className="absolute left-0 z-20 mt-1 w-72 max-w-[calc(100vw-1.5rem)] rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
           <input
             autoFocus
             value={q}

@@ -131,23 +131,26 @@ export function ThreadList({
                       <MessageSquare size={13} className="shrink-0 text-slate-400" />
                       <span className="truncate">{displayTitle(t.title)}</span>
                     </button>
-                    <span className="shrink-0 text-[11px] text-slate-400 group-hover:hidden">
+                    <span className="shrink-0 text-[11px] text-slate-400 group-hover:hidden [@media(hover:none)]:hidden">
                       {relativeTime(t.updatedAt)}
                     </span>
+                    {/* Hover-reveal works with a mouse; touch devices have no hover state at
+                        all, so these stay visible whenever the pointer can't hover — otherwise
+                        rename/archive would be permanently unreachable on mobile. */}
                     <button
                       onClick={() => {
                         setRenamingId(t.id);
                         setRenameValue(displayTitle(t.title));
                       }}
                       aria-label="Rename"
-                      className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
+                      className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex [@media(hover:none)]:flex"
                     >
                       <Pencil size={12} />
                     </button>
                     <button
                       onClick={() => onArchive(t.id)}
                       aria-label="Archive"
-                      className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
+                      className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex [@media(hover:none)]:flex"
                     >
                       <Archive size={12} />
                     </button>

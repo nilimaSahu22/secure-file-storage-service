@@ -22,7 +22,7 @@ function PortalChrome({ patientName, children }: { patientName: string; children
 
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden bg-slate-50">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
+      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
           <Heart size={18} className="text-blue-600" />
           Meridian
@@ -42,14 +42,16 @@ function PortalChrome({ patientName, children }: { patientName: string; children
         </div>
       </header>
 
-      <nav className="flex gap-1 border-b border-slate-200 bg-white px-6">
+      {/* Five labeled tabs don't fit a narrow phone — scroll horizontally rather than
+          wrapping or squashing the labels unreadable. */}
+      <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-4 sm:px-6">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== "/portal" && pathname.startsWith(`${href}/`));
           return (
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+              className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors ${
                 active ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
             >
@@ -60,7 +62,7 @@ function PortalChrome({ patientName, children }: { patientName: string; children
         })}
         <button
           onClick={() => assistant.openNew()}
-          className={`flex items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+          className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors ${
             assistant.open ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500 hover:text-slate-700"
           }`}
         >
@@ -69,7 +71,7 @@ function PortalChrome({ patientName, children }: { patientName: string; children
         </button>
       </nav>
 
-      <main className="flex-1 p-6">{children}</main>
+      <main className="flex-1 p-4 sm:p-6">{children}</main>
 
       <AssistantDock
         ownerType="patient"
