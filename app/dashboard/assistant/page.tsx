@@ -1,30 +1,26 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getPatientBasic } from "@/lib/services/patients";
-import {
-  getThread,
-  getThreadMessagesForView,
-  listThreads,
-  type AssistantMessageView,
-} from "@/lib/services/assistant";
-import { AssistantView, type ThreadSummary } from "@/components/assistant/AssistantView";
+import { getThread, getThreadMessagesForView, type AssistantMessageView } from "@/lib/services/assistant";
+import { AssistantView } from "@/components/assistant/AssistantView";
 
 export const dynamic = "force-dynamic";
+
+const DEFAULT_TITLES = new Set(["New conversation", "New chat"]);
 
 export default async function StaffAssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ thread?: string; patient?: string }>;
+  searchParams: Promise<{ thread?: string; patient?: string; fresh?: string }>;
 }) {
   const session = await auth();
   if (!session || session.user.type !== "staff") redirect("/login");
   const owner = { type: "staff" as const, id: session.user.id };
-  const { thread: threadParam, patient: patientParam } = await searchParams;
-
-  const threads = (await listThreads(owner)) as ThreadSummary[];
+  const { thread: threadParam, patient: patientParam, fresh } = await searchParams;
 
   let activeThreadId: string | null = null;
   let messages: AssistantMessageView[] = [];
+  let title: string | undefined;
   let focusedPatientId: string | null = patientParam ?? null;
 
   if (threadParam) {
@@ -32,6 +28,7 @@ export default async function StaffAssistantPage({
     if (thread) {
       activeThreadId = thread.id;
       focusedPatientId = thread.focusedPatientId;
+      title = DEFAULT_TITLES.has(thread.title) ? undefined : thread.title;
       messages = await getThreadMessagesForView(thread.id);
     }
   }
@@ -43,14 +40,13 @@ export default async function StaffAssistantPage({
   }
 
   return (
-    <div>
-      <AssistantView
-        ownerType="staff"
-        initialThreads={threads}
-        activeThreadId={activeThreadId}
-        initialMessages={messages}
-        focusedPatient={focusedPatient}
-      />
-    </div>
+    <AssistantView
+      key={fresh ?? "assistant"}
+      ownerType="staff"
+      activeThreadId={activeThreadId}
+      initialMessages={messages}
+      initialTitle={title}
+      focusedPatient={focusedPatient}
+    />
   );
 }
