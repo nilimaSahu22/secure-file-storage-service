@@ -104,7 +104,7 @@ export function AssistantDock({
     ? "min-[1201px]:w-0 min-[1201px]:border-l-0"
     : full
       ? fullInsetClass
-      : "min-[1201px]:w-[400px]";
+      : "min-[1201px]:w-[400px] min-[1201px]:shadow-[-8px_0_24px_-12px_rgba(15,23,42,0.12)]";
 
   return (
     <>
@@ -118,18 +118,18 @@ export function AssistantDock({
         </button>
       )}
 
-      {/* Scrim: always on narrow screens while open; on wide screens only when full. */}
+      {/* Scrim: only on narrow screens, where the panel is an overlay. */}
       <button
         aria-label="Close assistant"
         tabIndex={open ? 0 : -1}
         onClick={() => (full ? setFull(false) : close())}
-        className={`fixed inset-0 z-[45] bg-slate-900/25 transition-opacity duration-300 ${
+        className={`fixed inset-0 z-[45] bg-slate-900/25 transition-opacity duration-300 min-[1201px]:hidden ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
-        } ${full ? "" : "min-[1201px]:hidden"}`}
+        }`}
       />
 
       <aside
-        className={`fixed right-0 top-0 z-50 flex h-screen w-full max-w-[440px] flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl transition-[width,transform] duration-300 ease-out min-[1201px]:max-w-none min-[1201px]:shadow-xl ${
+        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-[440px] flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl transition-[width,transform] duration-300 ease-out min-[1201px]:inset-y-auto min-[1201px]:top-14 min-[1201px]:h-[calc(100dvh-3.5rem)] min-[1201px]:max-w-none min-[1201px]:shadow-none ${
           open ? "translate-x-0" : "translate-x-full min-[1201px]:translate-x-0"
         } ${widthClass}`}
       >
