@@ -94,7 +94,7 @@ export function ThreadList({ threads, activeId, onOpen, onNewChat, onRename, onA
             {group.items.map((t) => (
               <div
                 key={t.id}
-                className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
+                className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm transition-colors ${
                   t.id === activeId ? "bg-white shadow-sm ring-1 ring-slate-200/60" : "hover:bg-slate-100"
                 }`}
               >
@@ -163,7 +163,7 @@ export function HomeChatToggle({ value, onChange }: HomeChatToggleProps) {
         <button
           key={tab}
           onClick={() => onChange(tab)}
-          className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 capitalize ${
+          className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 capitalize transition-colors ${
             value === tab ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
           }`}
         >

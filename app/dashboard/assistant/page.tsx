@@ -40,13 +40,15 @@ export default async function StaffAssistantPage({
   }
 
   return (
-    <AssistantView
-      key={fresh ?? "assistant"}
-      ownerType="staff"
-      activeThreadId={activeThreadId}
-      initialMessages={messages}
-      initialTitle={title}
-      focusedPatient={focusedPatient}
-    />
+    <div className="animate-[fade-in_200ms_ease-out]">
+      <AssistantView
+        key={fresh ?? "assistant"}
+        ownerType="staff"
+        activeThreadId={activeThreadId}
+        initialMessages={messages}
+        initialTitle={title}
+        focusedPatient={focusedPatient}
+      />
+    </div>
   );
 }
