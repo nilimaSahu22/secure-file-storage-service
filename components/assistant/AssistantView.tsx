@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import {
   Sparkles,
   SquarePen,
@@ -15,6 +14,7 @@ import {
   PanelLeft,
   PanelLeftClose,
   Maximize2,
+  Minimize2,
   X,
   FileText,
   Check,
@@ -59,14 +59,15 @@ interface AssistantViewProps {
   withRail?: boolean;
   initialThreads?: ThreadSummary[];
   initialTitle?: string;
+  /** Panel is at full width (expand/collapse toggles this). */
+  expanded?: boolean;
   activeThreadId: string | null;
   initialMessages: AssistantMessageView[];
   focusedPatient: { id: string; name: string } | null;
-  onExpand?: (threadId: string | null) => void;
+  onExpand?: () => void;
   onClose?: () => void;
 }
 
-const RESUME_KEY = "assistant:resume";
 const DEFAULT_TITLE_LABELS = new Set(["New conversation", "New chat"]);
 
 const TOOL_LABELS: Record<string, string> = {
@@ -126,6 +127,7 @@ export function AssistantView({
   withRail = false,
   initialThreads = [],
   initialTitle,
+  expanded = false,
   activeThreadId,
   initialMessages,
   focusedPatient: initialFocusedPatient,
@@ -133,8 +135,6 @@ export function AssistantView({
   onClose,
 }: AssistantViewProps) {
   const isPanel = variant === "panel";
-  const router = useRouter();
-  const params = useSearchParams();
 
   const [title, setTitle] = useState(initialTitle && initialTitle.trim() ? initialTitle : "Ask AI");
   const [threads, setThreads] = useState<ThreadSummary[]>(initialThreads);
@@ -262,35 +262,6 @@ export function AssistantView({
     el.style.height = `${Math.min(el.scrollHeight, 176)}px`;
   }
 
-  const syncUrl = useCallback(
-    (id: string | null) => {
-      if (isPanel) return;
-      const next = new URLSearchParams(params.toString());
-      if (id) next.set("thread", id);
-      else next.delete("thread");
-      router.replace(`?${next.toString()}`, { scroll: false });
-    },
-    [isPanel, params, router]
-  );
-
-  // Let the app sidebar hand the live conversation to the docked panel when you navigate away.
-  useEffect(() => {
-    if (isPanel) return;
-    try {
-      sessionStorage.setItem("assistant:current", threadId ?? "");
-    } catch {
-      /* ignore */
-    }
-  }, [isPanel, threadId]);
-
-  // Follow thread selections made from the app sidebar (the page's ?thread= changes).
-  useEffect(() => {
-    if (isPanel) return;
-    if (activeThreadId && activeThreadId !== threadId) void openThread(activeThreadId);
-    else if (!activeThreadId && threadId) newThread();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeThreadId]);
-
   async function openThread(id: string) {
     if (id === threadId) return;
     stopSpeaking();
@@ -305,7 +276,6 @@ export function AssistantView({
       setTitle(data.thread?.title && !DEFAULT_TITLE_LABELS.has(data.thread.title) ? data.thread.title : "Ask AI");
       setFocusedPatient(t?.focusedPatientId ? { id: t.focusedPatientId, name: "" } : null);
       if (isPanel) setRailOpen(false);
-      syncUrl(id);
     } catch {
       /* ignore */
     }
@@ -320,7 +290,6 @@ export function AssistantView({
     setError(null);
     setRailTab("chat");
     if (isPanel) setRailOpen(false);
-    syncUrl(null);
     inputRef.current?.focus();
   }
 
@@ -336,14 +305,6 @@ export function AssistantView({
   }
 
   function onHomeNavClick() {
-    // Leaving the full-screen Assistant: let the docked panel pick the conversation back up.
-    if (!isPanel && threadId) {
-      try {
-        sessionStorage.setItem(RESUME_KEY, threadId);
-      } catch {
-        /* ignore */
-      }
-    }
     if (isPanel) setRailOpen(false);
   }
 
@@ -449,7 +410,6 @@ export function AssistantView({
           },
           ...prev,
         ]);
-        syncUrl(data.threadId);
       } else {
         setThreads((prev) =>
           prev.map((t) =>
@@ -719,11 +679,11 @@ export function AssistantView({
           </button>
           {isPanel && onExpand && (
             <button
-              onClick={() => onExpand(threadId)}
-              aria-label="Open full screen"
+              onClick={onExpand}
+              aria-label={expanded ? "Collapse to side panel" : "Expand to full screen"}
               className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             >
-              <Maximize2 size={14} />
+              {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </button>
           )}
           {isPanel && onClose && (

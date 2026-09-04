@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   Users,
@@ -21,10 +21,9 @@ import {
 import type { Role } from "@prisma/client";
 import { getInitialsFromName } from "@/lib/format";
 import { ThreadList, HomeChatToggle, type ThreadSummary } from "@/components/assistant/ThreadList";
+import { useAssistant } from "@/components/assistant/AssistantController";
 
-const ASSISTANT_PATH = "/dashboard/assistant";
 export const THREADS_CHANGED_EVENT = "assistant:threads-changed";
-const RESUME_KEY = "assistant:resume";
 
 interface NavItem {
   href: string;
@@ -48,16 +47,14 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Sidebar({ role, name }: { role: Role; name: string }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const assistant = useAssistant();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [tab, setTab] = useState<"home" | "chat">(pathname.startsWith(ASSISTANT_PATH) ? "chat" : "home");
+  const [tab, setTab] = useState<"home" | "chat">("home");
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
 
   const items = NAV_ITEMS.filter((item) => item.roles.includes(role));
   const roleLabel = role.charAt(0) + role.slice(1).toLowerCase();
-  const onAssistant = pathname.startsWith(ASSISTANT_PATH);
-  const activeThreadId = onAssistant ? searchParams.get("thread") : null;
+  const activeThreadId = assistant.open ? assistant.threadId : null;
 
   const refetchThreads = useCallback(async () => {
     try {
@@ -77,14 +74,20 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
     return () => window.removeEventListener(THREADS_CHANGED_EVENT, handler);
   }, [refetchThreads]);
 
+  // Surface the conversation list whenever the assistant opens.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- follow the assistant's open state
+    if (assistant.open) setTab("chat");
+  }, [assistant.open, assistant.seq]);
+
   function openThread(id: string) {
     setMenuOpen(false);
-    router.push(`${ASSISTANT_PATH}?thread=${id}`);
+    assistant.openThread(id);
   }
 
   function newChat() {
     setMenuOpen(false);
-    router.push(`${ASSISTANT_PATH}?fresh=${Date.now()}`);
+    assistant.openNew();
   }
 
   async function patchThread(id: string, body: Record<string, unknown>) {
@@ -98,26 +101,7 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).catch(() => null);
-    if (body.archived && id === activeThreadId) router.push(ASSISTANT_PATH);
-  }
-
-  // When leaving the full-screen Assistant via a Home link, hand the conversation to the docked panel.
-  function handleHomeNav() {
-    setMenuOpen(false);
-    if (!onAssistant) return;
-    let current = activeThreadId;
-    if (!current) {
-      try {
-        current = sessionStorage.getItem("assistant:current") || null;
-      } catch {
-        current = null;
-      }
-    }
-    try {
-      sessionStorage.setItem(RESUME_KEY, current || "new");
-    } catch {
-      /* ignore */
-    }
+    if (body.archived && id === activeThreadId) assistant.openNew();
   }
 
   function navLink({ href, label, icon: Icon }: NavItem) {
@@ -126,7 +110,7 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
       <Link
         key={href}
         href={href}
-        onClick={handleHomeNav}
+        onClick={() => setMenuOpen(false)}
         className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
           active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"
         }`}
