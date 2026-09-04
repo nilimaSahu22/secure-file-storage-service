@@ -46,6 +46,10 @@ const NAV_ITEMS: NavItem[] = [
 export function Sidebar({ role, name }: { role: Role; name: string }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // The full-screen Assistant provides its own Home/Chat rail — don't stack a second sidebar next to it.
+  if (pathname?.startsWith("/dashboard/assistant")) return null;
+
   const items = NAV_ITEMS.filter((item) => item.roles.includes(role));
   const roleLabel = role.charAt(0) + role.slice(1).toLowerCase();
 
