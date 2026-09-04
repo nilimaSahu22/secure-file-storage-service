@@ -203,8 +203,23 @@ export function AssistantView({
   const [preview, setPreview] = useState<{ fileName: string; url: string } | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
 
+  const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // The full-screen view must fill exactly the space below the app chrome. Measuring
+  // beats guessing a `calc()` offset that drifts with the top bar's real height.
+  const [fullHeight, setFullHeight] = useState<number | null>(null);
+  useEffect(() => {
+    if (isPanel) return;
+    function measure() {
+      const top = rootRef.current?.getBoundingClientRect().top ?? 0;
+      setFullHeight(Math.max(420, window.innerHeight - top));
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [isPanel]);
   const askedByVoiceRef = useRef(false);
   const spokenLanguageRef = useRef<string | null>(null);
 
@@ -551,6 +566,98 @@ export function AssistantView({
   const streaming = messages.some((m) => m.id.startsWith("stream-") && m.content);
   const suggestions = SUGGESTIONS[ownerType];
   const groups = groupThreads(threads);
+  const isEmpty = messages.length === 0;
+
+  const composerInner = (
+    <div className="mx-auto w-full max-w-2xl px-5">
+      {isEmpty && (
+        <div className="mb-2.5">
+          <p className="mb-1 px-1 text-sm font-semibold text-slate-900">What can I help you with?</p>
+          {suggestions.map((s) => (
+            <button
+              key={s.label}
+              onClick={() => {
+                primeAudio();
+                void send(s.prompt);
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            >
+              <s.icon size={14} className="shrink-0 text-slate-400" />
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          primeAudio();
+          void send();
+        }}
+        className="rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors focus-within:border-slate-300"
+      >
+        <textarea
+          ref={inputRef}
+          value={input}
+          rows={1}
+          onChange={(e) => {
+            askedByVoiceRef.current = false;
+            setInput(e.target.value);
+            autoGrow();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              primeAudio();
+              void send();
+            }
+          }}
+          placeholder="Ask, search or make anything…"
+          className="block max-h-44 w-full resize-none bg-transparent px-4 pb-1.5 pt-3 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+        />
+        <div className="flex items-center justify-end gap-1.5 px-2 pb-2">
+          {voice.supported && (
+            <button
+              type="button"
+              onClick={() => {
+                primeAudio();
+                if (voice.recording) voice.stop();
+                else voice.start();
+              }}
+              disabled={voice.transcribing}
+              aria-label={voice.recording ? "Stop voice input" : "Start voice input"}
+              className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:opacity-50 ${
+                voice.recording
+                  ? "border-red-300 bg-red-50 text-red-600"
+                  : "border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              }`}
+            >
+              {voice.recording ? <MicOff size={15} /> : <Mic size={15} />}
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={sending || !input.trim()}
+            aria-label="Send"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2f66ea] text-white transition-colors hover:bg-[#2554c7] disabled:bg-slate-200 disabled:text-slate-400"
+          >
+            {sending ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={15} />}
+          </button>
+        </div>
+      </form>
+      {(voice.recording || voice.transcribing) && (
+        <p className="mt-1.5 flex items-center gap-1.5 px-1 text-xs italic text-slate-500">
+          <span className="relative flex h-2 w-2 items-center justify-center">
+            <span className="absolute h-2 w-2 animate-ping rounded-full bg-red-500 opacity-75" />
+            <span className="relative h-2 w-2 rounded-full bg-red-500" />
+          </span>
+          {voice.recording ? "Listening… tap the mic to stop." : "Transcribing…"}
+        </p>
+      )}
+      {voice.error && <p className="mt-1 px-1 text-xs text-red-600">{voice.error}</p>}
+      {isEmpty && error && <p className="mt-1 px-1 text-xs text-red-600">{error}</p>}
+    </div>
+  );
 
   const rail = (
     <aside
@@ -682,10 +789,12 @@ export function AssistantView({
 
   return (
     <div
+      ref={rootRef}
+      style={isPanel ? undefined : { height: fullHeight ?? undefined }}
       className={
         isPanel
           ? "flex h-full w-full flex-col overflow-hidden bg-white"
-          : "flex h-[calc(100dvh-var(--assistant-chrome,7rem))] min-h-[520px] flex-col overflow-hidden bg-white"
+          : "flex h-[calc(100dvh-3.5rem)] min-h-[420px] flex-col overflow-hidden bg-white"
       }
     >
       {/* Header */}
@@ -757,6 +866,12 @@ export function AssistantView({
 
         {/* Chat column */}
         <div className="flex min-w-0 flex-1 flex-col">
+          {isEmpty ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto py-8">
+              <div className="w-full">{composerInner}</div>
+            </div>
+          ) : (
+            <>
           <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-5 py-6">
               {messages.map((m) =>
@@ -866,96 +981,9 @@ export function AssistantView({
             </div>
           </div>
 
-          {/* Composer */}
-          <div className="shrink-0 border-t border-slate-100 bg-white">
-            <div className="mx-auto w-full max-w-2xl px-5 pb-4 pt-3">
-              {messages.length === 0 && (
-                <div className="mb-2.5">
-                  <p className="mb-1 px-1 text-sm font-semibold text-slate-900">What can I help you with?</p>
-                  {suggestions.map((s) => (
-                    <button
-                      key={s.label}
-                      onClick={() => {
-                        primeAudio();
-                        void send(s.prompt);
-                      }}
-                      className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                    >
-                      <s.icon size={14} className="shrink-0 text-slate-400" />
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  primeAudio();
-                  void send();
-                }}
-                className="rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors focus-within:border-slate-300"
-              >
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  rows={1}
-                  onChange={(e) => {
-                    askedByVoiceRef.current = false;
-                    setInput(e.target.value);
-                    autoGrow();
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      primeAudio();
-                      void send();
-                    }
-                  }}
-                  placeholder="Ask, search or make anything…"
-                  className="block max-h-44 w-full resize-none bg-transparent px-4 pb-1.5 pt-3 text-sm text-slate-800 outline-none placeholder:text-slate-400"
-                />
-                <div className="flex items-center justify-end gap-1.5 px-2 pb-2">
-                  {voice.supported && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        primeAudio();
-                        if (voice.recording) voice.stop();
-                        else voice.start();
-                      }}
-                      disabled={voice.transcribing}
-                      aria-label={voice.recording ? "Stop voice input" : "Start voice input"}
-                      className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:opacity-50 ${
-                        voice.recording
-                          ? "border-red-300 bg-red-50 text-red-600"
-                          : "border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                      }`}
-                    >
-                      {voice.recording ? <MicOff size={15} /> : <Mic size={15} />}
-                    </button>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={sending || !input.trim()}
-                    aria-label="Send"
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2f66ea] text-white transition-colors hover:bg-[#2554c7] disabled:bg-slate-200 disabled:text-slate-400"
-                  >
-                    {sending ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={15} />}
-                  </button>
-                </div>
-              </form>
-              {(voice.recording || voice.transcribing) && (
-                <p className="mt-1.5 flex items-center gap-1.5 px-1 text-xs italic text-slate-500">
-                  <span className="relative flex h-2 w-2 items-center justify-center">
-                    <span className="absolute h-2 w-2 animate-ping rounded-full bg-red-500 opacity-75" />
-                    <span className="relative h-2 w-2 rounded-full bg-red-500" />
-                  </span>
-                  {voice.recording ? "Listening… tap the mic to stop." : "Transcribing…"}
-                </p>
-              )}
-              {voice.error && <p className="mt-1 px-1 text-xs text-red-600">{voice.error}</p>}
-            </div>
-          </div>
+          <div className="shrink-0 border-t border-slate-100 bg-white pb-4 pt-3">{composerInner}</div>
+            </>
+          )}
         </div>
       </div>
 
