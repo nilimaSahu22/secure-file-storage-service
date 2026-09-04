@@ -3,12 +3,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sparkles, X } from "lucide-react";
-import { AssistantView, type ThreadSummary } from "@/components/assistant/AssistantView";
+import {
+  AssistantView,
+  type ThreadSummary,
+} from "@/components/assistant/AssistantView";
+import type { AssistantMessageView } from "@/lib/services/assistant";
 
 interface AssistantDockProps {
   ownerType: "staff" | "patient";
 }
 
+const RESUME_KEY = "assistant:resume";
 const FULLSCREEN_PATH = { staff: "/dashboard/assistant", patient: "/portal/assistant" } as const;
 
 export function AssistantDock({ ownerType }: AssistantDockProps) {
@@ -16,12 +21,17 @@ export function AssistantDock({ ownerType }: AssistantDockProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
+  const [resume, setResume] = useState<{ threadId: string; messages: AssistantMessageView[] } | null>(null);
 
-  const load = useCallback(async () => {
+  const onFullscreen = pathname?.startsWith(FULLSCREEN_PATH[ownerType]) ?? false;
+  const onChart = ownerType === "staff" && /^\/dashboard\/patients\/[^/]+$/.test(pathname ?? "");
+  const hidden = onFullscreen || onChart;
+
+  const loadThreads = useCallback(async () => {
     try {
       const res = await fetch("/api/assistant/threads");
-      if (!res.ok) return;
-      setThreads(await res.json());
+      if (res.ok) setThreads(await res.json());
+      else setThreads([]);
     } catch {
       setThreads([]);
     }
@@ -29,8 +39,44 @@ export function AssistantDock({ ownerType }: AssistantDockProps) {
 
   function openDock() {
     setOpen(true);
-    if (threads === null) void load();
+    setResume(null);
+    if (threads === null) void loadThreads();
   }
+
+  function closeDock() {
+    setOpen(false);
+    setResume(null);
+  }
+
+  // Coming back from the full-screen Assistant via its Home rail: pick the conversation up here.
+  useEffect(() => {
+    if (hidden) return;
+    let rid: string | null = null;
+    try {
+      rid = sessionStorage.getItem(RESUME_KEY);
+    } catch {
+      rid = null;
+    }
+    if (!rid) return;
+    try {
+      sessionStorage.removeItem(RESUME_KEY);
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpen(true);
+    if (threads === null) void loadThreads();
+    void (async () => {
+      try {
+        const res = await fetch(`/api/assistant/threads/${rid}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setResume({ threadId: rid as string, messages: data.messages ?? [] });
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [pathname, hidden, threads, loadThreads]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -40,10 +86,7 @@ export function AssistantDock({ ownerType }: AssistantDockProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // The full-screen Assistant and the in-chart Ask AI panel own their own surface.
-  const onFullscreen = pathname?.startsWith(FULLSCREEN_PATH[ownerType]);
-  const onChart = ownerType === "staff" && /^\/dashboard\/patients\/[^/]+$/.test(pathname ?? "");
-  if (onFullscreen || onChart) return null;
+  if (hidden) return null;
 
   return (
     <>
@@ -61,7 +104,7 @@ export function AssistantDock({ ownerType }: AssistantDockProps) {
         <>
           <button
             aria-label="Close assistant"
-            onClick={() => setOpen(false)}
+            onClick={closeDock}
             className="fixed inset-0 z-40 bg-slate-900/20 md:hidden"
           />
           <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] animate-[slide-in-right_240ms_ease-out] flex-col border-l border-slate-200 bg-white shadow-2xl">
@@ -72,7 +115,7 @@ export function AssistantDock({ ownerType }: AssistantDockProps) {
                     <Sparkles size={15} className="text-[#2f66ea]" /> Ask AI
                   </span>
                   <button
-                    onClick={() => setOpen(false)}
+                    onClick={closeDock}
                     aria-label="Close assistant"
                     className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100"
                   >
@@ -83,16 +126,19 @@ export function AssistantDock({ ownerType }: AssistantDockProps) {
               </div>
             ) : (
               <AssistantView
+                key={resume?.threadId ?? "new"}
                 ownerType={ownerType}
                 variant="panel"
                 initialThreads={threads}
-                activeThreadId={null}
-                initialMessages={[]}
+                activeThreadId={resume?.threadId ?? null}
+                initialMessages={resume?.messages ?? []}
                 focusedPatient={null}
-                onClose={() => setOpen(false)}
-                onExpand={() => {
-                  setOpen(false);
-                  router.push(FULLSCREEN_PATH[ownerType]);
+                onClose={closeDock}
+                onExpand={(threadId) => {
+                  closeDock();
+                  router.push(
+                    threadId ? `${FULLSCREEN_PATH[ownerType]}?thread=${threadId}` : FULLSCREEN_PATH[ownerType]
+                  );
                 }}
               />
             )}

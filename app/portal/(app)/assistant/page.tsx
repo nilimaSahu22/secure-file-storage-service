@@ -34,7 +34,7 @@ export default async function PortalAssistantPage({
   }
 
   return (
-    <div className="[--assistant-chrome:9rem]">
+    <div className="-m-6 [--assistant-chrome:6.75rem]">
       <AssistantView
         ownerType="patient"
         initialThreads={threads}

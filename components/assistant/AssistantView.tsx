@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Sparkles,
@@ -22,10 +23,16 @@ import {
   CircleAlert,
   Download,
   MessageSquare,
-  Stethoscope,
-  CalendarClock,
+  Home,
+  Users,
+  CalendarDays,
   ListChecks,
+  FileClock,
+  BookOpen,
+  Stethoscope,
+  FolderLock,
   FolderSearch,
+  CalendarClock,
 } from "lucide-react";
 import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
 import { FocusedPatientPicker } from "@/components/assistant/FocusedPatientPicker";
@@ -62,10 +69,11 @@ interface AssistantViewProps {
   activeThreadId: string | null;
   initialMessages: AssistantMessageView[];
   focusedPatient: { id: string; name: string } | null;
-  onExpand?: () => void;
+  onExpand?: (threadId: string | null) => void;
   onClose?: () => void;
 }
 
+const RESUME_KEY = "assistant:resume";
 const DEFAULT_TITLE_LABELS = new Set(["New conversation", "New chat"]);
 
 const TOOL_LABELS: Record<string, string> = {
@@ -86,19 +94,38 @@ const TOOL_LABELS: Record<string, string> = {
   search_audit_log: "Searching the audit log",
 };
 
-const STAFF_SUGGESTIONS = [
-  { icon: Stethoscope, label: "Summarise this patient's recent visits", prompt: "Summarise this patient's recent visits." },
-  { icon: FolderSearch, label: "What do the latest documents say?", prompt: "What do the latest uploaded documents say?" },
-  { icon: CalendarClock, label: "Show upcoming appointments", prompt: "What appointments does this patient have coming up?" },
-  { icon: ListChecks, label: "What tasks are open?", prompt: "What tasks are open for this patient?" },
-];
+type NavLink = { href: string; label: string; icon: typeof Home };
 
-const PATIENT_SUGGESTIONS = [
-  { icon: Stethoscope, label: "Explain my latest visit", prompt: "Can you explain my latest visit in plain language?" },
-  { icon: FolderSearch, label: "What documents were requested from me?", prompt: "What documents have been requested from me?" },
-  { icon: CalendarClock, label: "Request an appointment", prompt: "I'd like to request an appointment." },
-  { icon: ListChecks, label: "What reminders do I have?", prompt: "What reminders or follow-ups do I have?" },
-];
+const HOME_NAV: Record<"staff" | "patient", NavLink[]> = {
+  staff: [
+    { href: "/dashboard", label: "Patients", icon: Users },
+    { href: "/dashboard/appointments", label: "Appointments", icon: CalendarDays },
+    { href: "/dashboard/tasks", label: "Task Queue", icon: ListChecks },
+    { href: "/dashboard/prior-auth", label: "Prior Auth", icon: FileClock },
+    { href: "/dashboard/workflows", label: "Playbook", icon: BookOpen },
+  ],
+  patient: [
+    { href: "/portal", label: "Home", icon: Home },
+    { href: "/portal/visits", label: "Visits", icon: Stethoscope },
+    { href: "/portal/appointments", label: "Appointments", icon: CalendarDays },
+    { href: "/portal/documents", label: "Documents", icon: FolderLock },
+  ],
+};
+
+const SUGGESTIONS: Record<"staff" | "patient", { icon: typeof Home; label: string; prompt: string }[]> = {
+  staff: [
+    { icon: Stethoscope, label: "Summarise this patient's recent visits", prompt: "Summarise this patient's recent visits." },
+    { icon: FolderSearch, label: "What do the latest documents say?", prompt: "What do the latest uploaded documents say?" },
+    { icon: CalendarClock, label: "Show upcoming appointments", prompt: "What appointments does this patient have coming up?" },
+    { icon: ListChecks, label: "What tasks are open?", prompt: "What tasks are open for this patient?" },
+  ],
+  patient: [
+    { icon: Stethoscope, label: "Explain my latest visit", prompt: "Can you explain my latest visit in plain language?" },
+    { icon: FolderSearch, label: "What documents were requested from me?", prompt: "What documents have been requested from me?" },
+    { icon: CalendarClock, label: "Request an appointment", prompt: "I'd like to request an appointment." },
+    { icon: ListChecks, label: "What reminders do I have?", prompt: "What reminders or follow-ups do I have?" },
+  ],
+};
 
 function toState(m: AssistantMessageView): MessageState {
   return {
@@ -169,6 +196,7 @@ export function AssistantView({
   const [workLabel, setWorkLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [railOpen, setRailOpen] = useState(!isPanel);
+  const [railTab, setRailTab] = useState<"chat" | "home">("chat");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -267,7 +295,7 @@ export function AssistantView({
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 176)}px`;
   }
 
   const syncUrl = useCallback(
@@ -306,6 +334,7 @@ export function AssistantView({
     setMessages([]);
     setFocusedPatient(null);
     setError(null);
+    setRailTab("chat");
     if (isPanel) setRailOpen(false);
     syncUrl(null);
     inputRef.current?.focus();
@@ -320,6 +349,18 @@ export function AssistantView({
         body: JSON.stringify({ focusedPatientId: patient?.id ?? null }),
       }).catch(() => null);
     }
+  }
+
+  function onHomeNavClick() {
+    // Leaving the full-screen Assistant: let the docked panel pick the conversation back up.
+    if (!isPanel && threadId) {
+      try {
+        sessionStorage.setItem(RESUME_KEY, threadId);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (isPanel) setRailOpen(false);
   }
 
   async function send(override?: string) {
@@ -508,189 +549,135 @@ export function AssistantView({
   const headerTitle =
     activeThread && !DEFAULT_TITLE_LABELS.has(activeThread.title) ? activeThread.title : "Ask AI";
   const streaming = messages.some((m) => m.id.startsWith("stream-") && m.content);
-  const suggestions = ownerType === "staff" ? STAFF_SUGGESTIONS : PATIENT_SUGGESTIONS;
+  const suggestions = SUGGESTIONS[ownerType];
   const groups = groupThreads(threads);
 
   const rail = (
     <aside
-      className={`flex w-60 shrink-0 flex-col bg-slate-50/80 ${
-        isPanel ? "absolute inset-y-0 left-0 z-20 border-r border-slate-200 shadow-lg" : "border-r border-slate-200"
+      className={`flex w-60 shrink-0 flex-col border-r border-slate-200 bg-slate-50/95 ${
+        isPanel
+          ? "absolute inset-y-0 left-0 z-20 shadow-lg"
+          : "absolute inset-y-0 left-0 z-20 shadow-lg lg:static lg:z-auto lg:shadow-none"
       }`}
     >
-      <div className="flex items-center gap-2 px-3 py-3">
-        <button
-          onClick={newThread}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          <SquarePen size={14} /> New chat
-        </button>
+      <div className="flex items-center gap-2 px-3 py-2.5">
+        <div className="flex flex-1 rounded-lg bg-slate-100 p-0.5 text-sm">
+          <button
+            onClick={() => setRailTab("home")}
+            className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 ${
+              railTab === "home" ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"
+            }`}
+          >
+            <Home size={13} /> Home
+          </button>
+          <button
+            onClick={() => setRailTab("chat")}
+            className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 ${
+              railTab === "chat" ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"
+            }`}
+          >
+            <MessageSquare size={13} /> Chat
+          </button>
+        </div>
         <button
           onClick={() => setRailOpen(false)}
-          aria-label="Hide conversation list"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+          aria-label="Hide sidebar"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-600"
         >
-          <PanelLeftClose size={16} />
+          <PanelLeftClose size={15} />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto px-2 pb-3">
-        {groups.length === 0 && <p className="px-2 py-3 text-xs text-slate-400">No conversations yet.</p>}
-        {groups.map((group) => (
-          <div key={group.label} className="mb-3">
-            <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">
-              {group.label}
-            </p>
-            {group.items.map((t) => (
-              <div
-                key={t.id}
-                className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
-                  t.id === threadId ? "bg-white shadow-sm ring-1 ring-slate-200/60" : "hover:bg-slate-100"
-                }`}
-              >
-                {renamingId === t.id ? (
-                  <input
-                    autoFocus
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onBlur={() => commitRename(t.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitRename(t.id);
-                      if (e.key === "Escape") setRenamingId(null);
-                    }}
-                    className="min-w-0 flex-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs outline-none"
-                  />
-                ) : (
-                  <>
-                    <button
-                      onClick={() => openThread(t.id)}
-                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-slate-700"
-                      title={t.title}
-                    >
-                      <MessageSquare size={13} className="shrink-0 text-slate-400" />
-                      <span className="truncate">{t.title}</span>
-                    </button>
-                    <span className="shrink-0 text-[11px] text-slate-400 group-hover:hidden">
-                      {relativeTime(t.updatedAt)}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setRenamingId(t.id);
-                        setRenameValue(t.title);
-                      }}
-                      aria-label="Rename"
-                      className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                    <button
-                      onClick={() => archive(t.id)}
-                      aria-label="Archive"
-                      className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
-                    >
-                      <Archive size={12} />
-                    </button>
-                  </>
-                )}
+
+      {railTab === "home" ? (
+        <nav className="flex flex-col gap-0.5 px-2 pb-3">
+          {HOME_NAV[ownerType].map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              onClick={onHomeNavClick}
+              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            >
+              <Icon size={15} className="text-slate-400" />
+              {label}
+            </Link>
+          ))}
+        </nav>
+      ) : (
+        <>
+          <div className="px-3 pb-2">
+            <button
+              onClick={newThread}
+              className="flex w-full items-center justify-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <SquarePen size={14} /> New chat
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-2 pb-3">
+            {groups.length === 0 && <p className="px-2 py-3 text-xs text-slate-400">No conversations yet.</p>}
+            {groups.map((group) => (
+              <div key={group.label} className="mb-3">
+                <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                  {group.label}
+                </p>
+                {group.items.map((t) => (
+                  <div
+                    key={t.id}
+                    className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
+                      t.id === threadId ? "bg-white shadow-sm ring-1 ring-slate-200/60" : "hover:bg-slate-100"
+                    }`}
+                  >
+                    {renamingId === t.id ? (
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => commitRename(t.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitRename(t.id);
+                          if (e.key === "Escape") setRenamingId(null);
+                        }}
+                        className="min-w-0 flex-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs outline-none"
+                      />
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => openThread(t.id)}
+                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-slate-700"
+                          title={t.title}
+                        >
+                          <MessageSquare size={13} className="shrink-0 text-slate-400" />
+                          <span className="truncate">{t.title}</span>
+                        </button>
+                        <span className="shrink-0 text-[11px] text-slate-400 group-hover:hidden">
+                          {relativeTime(t.updatedAt)}
+                        </span>
+                        <button
+                          onClick={() => {
+                            setRenamingId(t.id);
+                            setRenameValue(t.title);
+                          }}
+                          aria-label="Rename"
+                          className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          onClick={() => archive(t.id)}
+                          aria-label="Archive"
+                          className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
+                        >
+                          <Archive size={12} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
             ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </aside>
-  );
-
-  const composer = (
-    <div className="mx-auto w-full max-w-[46rem] px-4 pb-4 pt-2">
-      {messages.length === 0 && (
-        <div className="mb-3">
-          <p className="mb-1.5 text-sm font-semibold text-slate-900">What can I help you with?</p>
-          <div className="flex flex-col">
-            {suggestions.map((s) => (
-              <button
-                key={s.label}
-                onClick={() => {
-                  primeAudio();
-                  void send(s.prompt);
-                }}
-                className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              >
-                <s.icon size={14} className="shrink-0 text-slate-400" />
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          primeAudio();
-          void send();
-        }}
-        className="relative rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors focus-within:border-slate-300"
-      >
-        <textarea
-          ref={inputRef}
-          value={input}
-          rows={1}
-          onChange={(e) => {
-            askedByVoiceRef.current = false;
-            setInput(e.target.value);
-            autoGrow();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              primeAudio();
-              void send();
-            }
-          }}
-          placeholder="Ask, search or make anything…"
-          className="max-h-52 w-full resize-none bg-transparent px-4 pb-12 pt-3 text-sm text-slate-800 outline-none placeholder:text-slate-400"
-        />
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between px-2.5 py-2">
-          <span className="text-[11px] text-slate-300">{sending ? "" : "Shift + Enter for a new line"}</span>
-          <div className="flex items-center gap-1.5">
-            {voice.supported && (
-              <button
-                type="button"
-                onClick={() => {
-                  primeAudio();
-                  if (voice.recording) voice.stop();
-                  else voice.start();
-                }}
-                disabled={voice.transcribing}
-                aria-label={voice.recording ? "Stop voice input" : "Start voice input"}
-                className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:opacity-50 ${
-                  voice.recording
-                    ? "border-red-300 bg-red-50 text-red-600"
-                    : "border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                }`}
-              >
-                {voice.recording ? <MicOff size={15} /> : <Mic size={15} />}
-              </button>
-            )}
-            <button
-              type="submit"
-              disabled={sending || !input.trim()}
-              aria-label="Send"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2f66ea] text-white transition-colors hover:bg-[#2554c7] disabled:bg-slate-200 disabled:text-slate-400"
-            >
-              {sending ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={15} />}
-            </button>
-          </div>
-        </div>
-      </form>
-      {(voice.recording || voice.transcribing) && (
-        <p className="mt-1.5 flex items-center gap-1.5 px-1 text-xs italic text-slate-500">
-          <span className="relative flex h-2 w-2 items-center justify-center">
-            <span className="absolute h-2 w-2 animate-ping rounded-full bg-red-500 opacity-75" />
-            <span className="relative h-2 w-2 rounded-full bg-red-500" />
-          </span>
-          {voice.recording ? "Listening… tap the mic to stop." : "Transcribing…"}
-        </p>
-      )}
-      {voice.error && <p className="mt-1 px-1 text-xs text-red-600">{voice.error}</p>}
-    </div>
   );
 
   return (
@@ -698,15 +685,26 @@ export function AssistantView({
       className={
         isPanel
           ? "flex h-full w-full flex-col overflow-hidden bg-white"
-          : "relative flex h-[calc(100vh-var(--assistant-chrome,7rem))] min-h-[520px] overflow-hidden bg-white"
+          : "flex h-[calc(100dvh-var(--assistant-chrome,7rem))] min-h-[520px] flex-col overflow-hidden bg-white"
       }
     >
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5">
-        <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-slate-900">
-          <Sparkles size={15} className="shrink-0 text-[#2f66ea]" />
-          <span className="truncate">{headerTitle}</span>
-        </p>
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-1">
+          {!railOpen && (
+            <button
+              onClick={() => setRailOpen(true)}
+              aria-label="Show sidebar"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <PanelLeft size={15} />
+            </button>
+          )}
+          <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-slate-900">
+            <Sparkles size={15} className="shrink-0 text-[#2f66ea]" />
+            <span className="truncate">{headerTitle}</span>
+          </p>
+        </div>
         <div className="flex shrink-0 items-center gap-0.5">
           {ownerType === "staff" && !isPanel && (
             <div className="mr-1">
@@ -722,20 +720,11 @@ export function AssistantView({
           </button>
           {isPanel && onExpand && (
             <button
-              onClick={onExpand}
+              onClick={() => onExpand(threadId)}
               aria-label="Open full screen"
               className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             >
               <Maximize2 size={14} />
-            </button>
-          )}
-          {!isPanel && (
-            <button
-              onClick={() => setRailOpen((v) => !v)}
-              aria-label={railOpen ? "Hide conversation list" : "Show conversation list"}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            >
-              {railOpen ? <PanelLeftClose size={15} /> : <PanelLeft size={15} />}
             </button>
           )}
           {isPanel && onClose && (
@@ -751,39 +740,29 @@ export function AssistantView({
       </div>
 
       {ownerType === "staff" && isPanel && (
-        <div className="border-b border-slate-100 px-3 py-2">
+        <div className="shrink-0 border-b border-slate-100 px-3 py-2">
           <FocusedPatientPicker value={focusedPatient} onChange={setFocus} />
         </div>
       )}
 
-      <div className="relative flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {railOpen && rail}
-        {isPanel && railOpen && (
+        {railOpen && (
           <button
-            aria-label="Close conversation list"
+            aria-label="Close sidebar"
             onClick={() => setRailOpen(false)}
-            className="absolute inset-0 z-10 bg-slate-900/10"
+            className={`absolute inset-0 z-10 bg-slate-900/10 ${isPanel ? "" : "lg:hidden"}`}
           />
-        )}
-        {isPanel && !railOpen && (
-          <button
-            onClick={() => setRailOpen(true)}
-            aria-label="Show conversation list"
-            className="absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-          >
-            <PanelLeft size={15} />
-          </button>
         )}
 
         {/* Chat column */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div ref={scrollRef} className="flex-1 overflow-y-auto">
-            <div className="mx-auto flex min-h-full max-w-2xl flex-col gap-5 px-4 py-6">
-              <div className="flex-1" />
+          <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-5 py-6">
               {messages.map((m) =>
                 m.role === "user" ? (
                   <div key={m.id} className="flex justify-end">
-                    <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-[#2f66ea] px-3.5 py-2 text-sm text-white">
+                    <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-[#2f66ea] px-3.5 py-2 text-sm text-white">
                       {m.content}
                     </div>
                   </div>
@@ -887,7 +866,96 @@ export function AssistantView({
             </div>
           </div>
 
-          {composer}
+          {/* Composer */}
+          <div className="shrink-0 border-t border-slate-100 bg-white">
+            <div className="mx-auto w-full max-w-2xl px-5 pb-4 pt-3">
+              {messages.length === 0 && (
+                <div className="mb-2.5">
+                  <p className="mb-1 px-1 text-sm font-semibold text-slate-900">What can I help you with?</p>
+                  {suggestions.map((s) => (
+                    <button
+                      key={s.label}
+                      onClick={() => {
+                        primeAudio();
+                        void send(s.prompt);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    >
+                      <s.icon size={14} className="shrink-0 text-slate-400" />
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  primeAudio();
+                  void send();
+                }}
+                className="rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors focus-within:border-slate-300"
+              >
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  rows={1}
+                  onChange={(e) => {
+                    askedByVoiceRef.current = false;
+                    setInput(e.target.value);
+                    autoGrow();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      primeAudio();
+                      void send();
+                    }
+                  }}
+                  placeholder="Ask, search or make anything…"
+                  className="block max-h-44 w-full resize-none bg-transparent px-4 pb-1.5 pt-3 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                />
+                <div className="flex items-center justify-end gap-1.5 px-2 pb-2">
+                  {voice.supported && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        primeAudio();
+                        if (voice.recording) voice.stop();
+                        else voice.start();
+                      }}
+                      disabled={voice.transcribing}
+                      aria-label={voice.recording ? "Stop voice input" : "Start voice input"}
+                      className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:opacity-50 ${
+                        voice.recording
+                          ? "border-red-300 bg-red-50 text-red-600"
+                          : "border-transparent text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      }`}
+                    >
+                      {voice.recording ? <MicOff size={15} /> : <Mic size={15} />}
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={sending || !input.trim()}
+                    aria-label="Send"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2f66ea] text-white transition-colors hover:bg-[#2554c7] disabled:bg-slate-200 disabled:text-slate-400"
+                  >
+                    {sending ? <Loader2 size={15} className="animate-spin" /> : <ArrowUp size={15} />}
+                  </button>
+                </div>
+              </form>
+              {(voice.recording || voice.transcribing) && (
+                <p className="mt-1.5 flex items-center gap-1.5 px-1 text-xs italic text-slate-500">
+                  <span className="relative flex h-2 w-2 items-center justify-center">
+                    <span className="absolute h-2 w-2 animate-ping rounded-full bg-red-500 opacity-75" />
+                    <span className="relative h-2 w-2 rounded-full bg-red-500" />
+                  </span>
+                  {voice.recording ? "Listening… tap the mic to stop." : "Transcribing…"}
+                </p>
+              )}
+              {voice.error && <p className="mt-1 px-1 text-xs text-red-600">{voice.error}</p>}
+            </div>
+          </div>
         </div>
       </div>
 
