@@ -43,7 +43,7 @@ export default async function StaffAssistantPage({
   }
 
   return (
-    <div className="p-6 max-[520px]:p-3 [--assistant-chrome:8.5rem]">
+    <div className="[--assistant-chrome:3.25rem] max-[1200px]:[--assistant-chrome:3.5rem]">
       <AssistantView
         ownerType="staff"
         initialThreads={threads}
