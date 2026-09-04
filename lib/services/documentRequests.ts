@@ -58,5 +58,7 @@ export async function autoFulfillByType(patientId: string, category: string, fil
   const match = open.find(
     (r) => r.documentType.trim().toLowerCase() === category.trim().toLowerCase()
   );
-  if (match) await fulfillDocumentRequest(match.id, fileId);
+  if (!match) return null;
+  await fulfillDocumentRequest(match.id, fileId);
+  return match;
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { requestAppointment } from "@/lib/services/appointments";
+import { notifyStaff } from "@/lib/services/notifications";
 
 export interface RequestAppointmentActionInput {
   providerId: string;
@@ -32,6 +33,13 @@ export async function requestAppointmentAction(input: RequestAppointmentActionIn
     targetType: "Appointment",
     targetId: appointment.id,
     metadata: { providerId: input.providerId, scheduledAt: input.scheduledAt },
+  });
+
+  await notifyStaff(input.providerId, {
+    category: "appointment",
+    title: "New appointment request",
+    body: `${session.user.name ?? "A patient"} requested a visit${input.reason ? ` — ${input.reason}` : ""}.`,
+    linkPath: "/dashboard/appointments",
   });
 
   revalidatePath("/portal/appointments");

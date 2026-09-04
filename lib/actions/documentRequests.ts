@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { cancelDocumentRequest, createDocumentRequest } from "@/lib/services/documentRequests";
+import { notifyPatient } from "@/lib/services/notifications";
 
 export async function createDocumentRequestAction(input: {
   patientId: string;
@@ -34,6 +35,13 @@ export async function createDocumentRequestAction(input: {
     targetType: "DocumentRequest",
     targetId: req.id,
     metadata: { patientId: input.patientId, documentType: input.documentType },
+  });
+
+  await notifyPatient(input.patientId, {
+    category: "document",
+    title: "Document requested",
+    body: `${session.user.name ?? "Your care team"} asked you to upload: ${input.documentType.trim()}.`,
+    linkPath: `/portal/documents?type=${encodeURIComponent(input.documentType.trim())}`,
   });
 
   revalidatePath(`/dashboard/patients/${input.patientId}`);
