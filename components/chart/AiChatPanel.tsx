@@ -6,6 +6,7 @@ import { MessageCircle, Mic, MicOff, Send, FileText, ChevronDown, X, Volume2, Lo
 import type { ChatMessage as PrismaChatMessage, MedicalFile } from "@prisma/client";
 import { Button } from "@/components/ui/Button";
 import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
+import { Markdown } from "@/components/assistant/Markdown";
 
 interface AiChatPanelProps {
   patientId: string;
@@ -304,7 +305,7 @@ export function AiChatPanel({
                 </div>
               ) : (
                 <div key={m.id} className="max-w-[90%] text-sm leading-relaxed text-slate-700">
-                  {m.content}
+                  {m.content ? <Markdown>{m.content}</Markdown> : null}
                   {voice.supported && m.content.trim() && (
                     <button
                       type="button"
