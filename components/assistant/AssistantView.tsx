@@ -16,19 +16,13 @@ import {
   PanelLeftClose,
   Maximize2,
   X,
-  Pencil,
-  Archive,
   FileText,
   Check,
   CircleAlert,
   Download,
-  MessageSquare,
   Home,
-  Users,
   CalendarDays,
   ListChecks,
-  FileClock,
-  BookOpen,
   Stethoscope,
   FolderLock,
   FolderSearch,
@@ -36,15 +30,10 @@ import {
 } from "lucide-react";
 import { useVoiceInput } from "@/lib/hooks/useVoiceInput";
 import { FocusedPatientPicker } from "@/components/assistant/FocusedPatientPicker";
+import { ThreadList, HomeChatToggle, type ThreadSummary } from "@/components/assistant/ThreadList";
 import type { AssistantMessageView } from "@/lib/services/assistant";
 
-export interface ThreadSummary {
-  id: string;
-  title: string;
-  focusedPatientId: string | null;
-  archived: boolean;
-  updatedAt: string | Date;
-}
+export type { ThreadSummary } from "@/components/assistant/ThreadList";
 
 export interface ProposedAction {
   id: string;
@@ -65,7 +54,10 @@ interface MessageState {
 interface AssistantViewProps {
   ownerType: "staff" | "patient";
   variant?: "full" | "panel";
-  initialThreads: ThreadSummary[];
+  /** Show the built-in thread/nav rail. Off for staff (the app sidebar owns it) and for the dock. */
+  withRail?: boolean;
+  initialThreads?: ThreadSummary[];
+  initialTitle?: string;
   activeThreadId: string | null;
   initialMessages: AssistantMessageView[];
   focusedPatient: { id: string; name: string } | null;
@@ -94,23 +86,13 @@ const TOOL_LABELS: Record<string, string> = {
   search_audit_log: "Searching the audit log",
 };
 
-type NavLink = { href: string; label: string; icon: typeof Home };
-
-const HOME_NAV: Record<"staff" | "patient", NavLink[]> = {
-  staff: [
-    { href: "/dashboard", label: "Patients", icon: Users },
-    { href: "/dashboard/appointments", label: "Appointments", icon: CalendarDays },
-    { href: "/dashboard/tasks", label: "Task Queue", icon: ListChecks },
-    { href: "/dashboard/prior-auth", label: "Prior Auth", icon: FileClock },
-    { href: "/dashboard/workflows", label: "Playbook", icon: BookOpen },
-  ],
-  patient: [
-    { href: "/portal", label: "Home", icon: Home },
-    { href: "/portal/visits", label: "Visits", icon: Stethoscope },
-    { href: "/portal/appointments", label: "Appointments", icon: CalendarDays },
-    { href: "/portal/documents", label: "Documents", icon: FolderLock },
-  ],
-};
+// The patient portal has no persistent sidebar, so the assistant rail carries the nav there.
+const PATIENT_NAV: { href: string; label: string; icon: typeof Home }[] = [
+  { href: "/portal", label: "Home", icon: Home },
+  { href: "/portal/visits", label: "Visits", icon: Stethoscope },
+  { href: "/portal/appointments", label: "Appointments", icon: CalendarDays },
+  { href: "/portal/documents", label: "Documents", icon: FolderLock },
+];
 
 const SUGGESTIONS: Record<"staff" | "patient", { icon: typeof Home; label: string; prompt: string }[]> = {
   staff: [
@@ -137,45 +119,12 @@ function toState(m: AssistantMessageView): MessageState {
   };
 }
 
-function relativeTime(value: string | Date): string {
-  const then = new Date(value).getTime();
-  if (Number.isNaN(then)) return "";
-  const mins = Math.round((Date.now() - then) / 60000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  const days = Math.round(hrs / 24);
-  if (days < 7) return `${days}d`;
-  return `${Math.round(days / 7)}w`;
-}
-
-function groupThreads(threads: ThreadSummary[]): { label: string; items: ThreadSummary[] }[] {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const day = 86_400_000;
-  const buckets: Record<string, ThreadSummary[]> = {
-    Today: [],
-    Yesterday: [],
-    "Previous 7 days": [],
-    Older: [],
-  };
-  for (const t of threads) {
-    const ts = new Date(t.updatedAt).getTime();
-    if (ts >= startOfToday) buckets.Today.push(t);
-    else if (ts >= startOfToday - day) buckets.Yesterday.push(t);
-    else if (ts >= startOfToday - 7 * day) buckets["Previous 7 days"].push(t);
-    else buckets.Older.push(t);
-  }
-  return Object.entries(buckets)
-    .filter(([, items]) => items.length > 0)
-    .map(([label, items]) => ({ label, items }));
-}
-
 export function AssistantView({
   ownerType,
   variant = "full",
-  initialThreads,
+  withRail = false,
+  initialThreads = [],
+  initialTitle,
   activeThreadId,
   initialMessages,
   focusedPatient: initialFocusedPatient,
@@ -186,6 +135,7 @@ export function AssistantView({
   const router = useRouter();
   const params = useSearchParams();
 
+  const [title, setTitle] = useState(initialTitle && initialTitle.trim() ? initialTitle : "Ask AI");
   const [threads, setThreads] = useState<ThreadSummary[]>(initialThreads);
   const [threadId, setThreadId] = useState<string | null>(activeThreadId);
   const [messages, setMessages] = useState<MessageState[]>(initialMessages.map(toState));
@@ -195,10 +145,8 @@ export function AssistantView({
   const [sending, setSending] = useState(false);
   const [workLabel, setWorkLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [railOpen, setRailOpen] = useState(!isPanel);
+  const [railOpen, setRailOpen] = useState(withRail && !isPanel);
   const [railTab, setRailTab] = useState<"chat" | "home">("chat");
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ fileName: string; url: string } | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
@@ -324,6 +272,14 @@ export function AssistantView({
     [isPanel, params, router]
   );
 
+  // Follow thread selections made from the app sidebar (the page's ?thread= changes).
+  useEffect(() => {
+    if (isPanel) return;
+    if (activeThreadId && activeThreadId !== threadId) void openThread(activeThreadId);
+    else if (!activeThreadId && threadId) newThread();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThreadId]);
+
   async function openThread(id: string) {
     if (id === threadId) return;
     stopSpeaking();
@@ -335,6 +291,7 @@ export function AssistantView({
       setThreadId(id);
       setMessages((data.messages ?? []).map(toState));
       const t: ThreadSummary | undefined = threads.find((x) => x.id === id);
+      setTitle(data.thread?.title && !DEFAULT_TITLE_LABELS.has(data.thread.title) ? data.thread.title : "Ask AI");
       setFocusedPatient(t?.focusedPatientId ? { id: t.focusedPatientId, name: "" } : null);
       if (isPanel) setRailOpen(false);
       syncUrl(id);
@@ -347,6 +304,7 @@ export function AssistantView({
     stopSpeaking();
     setThreadId(null);
     setMessages([]);
+    setTitle("Ask AI");
     setFocusedPatient(null);
     setError(null);
     setRailTab("chat");
@@ -461,6 +419,7 @@ export function AssistantView({
       const data = done;
       const isNew = !threadId;
       setThreadId(data.threadId);
+      if (data.title && data.title.trim()) setTitle(data.title);
       patchStreaming((m) => ({
         ...m,
         id: data.messageId,
@@ -486,6 +445,11 @@ export function AssistantView({
             t.id === data.threadId ? { ...t, title: data.title, updatedAt: new Date().toISOString() } : t
           )
         );
+      }
+      try {
+        window.dispatchEvent(new Event("assistant:threads-changed"));
+      } catch {
+        /* ignore */
       }
       if (askedByVoice && typeof data.reply === "string" && data.reply.trim()) {
         void speak(data.messageId, data.reply);
@@ -538,11 +502,9 @@ export function AssistantView({
     }
   }
 
-  async function commitRename(id: string) {
-    const title = renameValue.trim();
-    setRenamingId(null);
-    if (!title) return;
+  async function renameThreadTitle(id: string, title: string) {
     setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
+    if (id === threadId) setTitle(title);
     await fetch(`/api/assistant/threads/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -560,12 +522,9 @@ export function AssistantView({
     }).catch(() => null);
   }
 
-  const activeThread = threads.find((t) => t.id === threadId);
-  const headerTitle =
-    activeThread && !DEFAULT_TITLE_LABELS.has(activeThread.title) ? activeThread.title : "Ask AI";
+  const headerTitle = title;
   const streaming = messages.some((m) => m.id.startsWith("stream-") && m.content);
   const suggestions = SUGGESTIONS[ownerType];
-  const groups = groupThreads(threads);
   const isEmpty = messages.length === 0;
 
   const composerInner = (
@@ -661,30 +620,15 @@ export function AssistantView({
 
   const rail = (
     <aside
-      className={`flex w-60 shrink-0 flex-col border-r border-slate-200 bg-slate-50/95 ${
+      className={`flex w-60 shrink-0 flex-col gap-2 border-r border-slate-200 bg-slate-50/95 p-3 ${
         isPanel
           ? "absolute inset-y-0 left-0 z-20 shadow-lg"
           : "absolute inset-y-0 left-0 z-20 shadow-lg lg:static lg:z-auto lg:shadow-none"
       }`}
     >
-      <div className="flex items-center gap-2 px-3 py-2.5">
-        <div className="flex flex-1 rounded-lg bg-slate-100 p-0.5 text-sm">
-          <button
-            onClick={() => setRailTab("home")}
-            className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 ${
-              railTab === "home" ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"
-            }`}
-          >
-            <Home size={13} /> Home
-          </button>
-          <button
-            onClick={() => setRailTab("chat")}
-            className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 ${
-              railTab === "chat" ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"
-            }`}
-          >
-            <MessageSquare size={13} /> Chat
-          </button>
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <HomeChatToggle value={railTab === "home" ? "home" : "chat"} onChange={setRailTab} />
         </div>
         <button
           onClick={() => setRailOpen(false)}
@@ -696,8 +640,8 @@ export function AssistantView({
       </div>
 
       {railTab === "home" ? (
-        <nav className="flex flex-col gap-0.5 px-2 pb-3">
-          {HOME_NAV[ownerType].map(({ href, label, icon: Icon }) => (
+        <nav className="flex flex-col gap-0.5 overflow-y-auto">
+          {PATIENT_NAV.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -710,79 +654,14 @@ export function AssistantView({
           ))}
         </nav>
       ) : (
-        <>
-          <div className="px-3 pb-2">
-            <button
-              onClick={newThread}
-              className="flex w-full items-center justify-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              <SquarePen size={14} /> New chat
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto px-2 pb-3">
-            {groups.length === 0 && <p className="px-2 py-3 text-xs text-slate-400">No conversations yet.</p>}
-            {groups.map((group) => (
-              <div key={group.label} className="mb-3">
-                <p className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                  {group.label}
-                </p>
-                {group.items.map((t) => (
-                  <div
-                    key={t.id}
-                    className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
-                      t.id === threadId ? "bg-white shadow-sm ring-1 ring-slate-200/60" : "hover:bg-slate-100"
-                    }`}
-                  >
-                    {renamingId === t.id ? (
-                      <input
-                        autoFocus
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onBlur={() => commitRename(t.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") commitRename(t.id);
-                          if (e.key === "Escape") setRenamingId(null);
-                        }}
-                        className="min-w-0 flex-1 rounded border border-slate-300 px-1.5 py-0.5 text-xs outline-none"
-                      />
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => openThread(t.id)}
-                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-slate-700"
-                          title={t.title}
-                        >
-                          <MessageSquare size={13} className="shrink-0 text-slate-400" />
-                          <span className="truncate">{t.title}</span>
-                        </button>
-                        <span className="shrink-0 text-[11px] text-slate-400 group-hover:hidden">
-                          {relativeTime(t.updatedAt)}
-                        </span>
-                        <button
-                          onClick={() => {
-                            setRenamingId(t.id);
-                            setRenameValue(t.title);
-                          }}
-                          aria-label="Rename"
-                          className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          onClick={() => archive(t.id)}
-                          aria-label="Archive"
-                          className="hidden h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-600 group-hover:flex"
-                        >
-                          <Archive size={12} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </>
+        <ThreadList
+          threads={threads}
+          activeId={threadId}
+          onOpen={(id) => void openThread(id)}
+          onNewChat={newThread}
+          onRename={(id, t) => void renameThreadTitle(id, t)}
+          onArchive={(id) => void archive(id)}
+        />
       )}
     </aside>
   );
@@ -800,7 +679,7 @@ export function AssistantView({
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-1">
-          {!railOpen && (
+          {withRail && !railOpen && (
             <button
               onClick={() => setRailOpen(true)}
               aria-label="Show sidebar"
@@ -855,8 +734,8 @@ export function AssistantView({
       )}
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        {railOpen && rail}
-        {railOpen && (
+        {withRail && railOpen && rail}
+        {withRail && railOpen && (
           <button
             aria-label="Close sidebar"
             onClick={() => setRailOpen(false)}

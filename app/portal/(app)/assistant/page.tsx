@@ -10,6 +10,8 @@ import { AssistantView, type ThreadSummary } from "@/components/assistant/Assist
 
 export const dynamic = "force-dynamic";
 
+const DEFAULT_TITLES = new Set(["New conversation", "New chat"]);
+
 export default async function PortalAssistantPage({
   searchParams,
 }: {
@@ -24,11 +26,13 @@ export default async function PortalAssistantPage({
 
   let activeThreadId: string | null = null;
   let messages: AssistantMessageView[] = [];
+  let title: string | undefined;
 
   if (threadParam) {
     const thread = await getThread(threadParam, owner);
     if (thread) {
       activeThreadId = thread.id;
+      title = DEFAULT_TITLES.has(thread.title) ? undefined : thread.title;
       messages = await getThreadMessagesForView(thread.id);
     }
   }
@@ -37,9 +41,11 @@ export default async function PortalAssistantPage({
     <div className="-m-6">
       <AssistantView
         ownerType="patient"
+        withRail
         initialThreads={threads}
         activeThreadId={activeThreadId}
         initialMessages={messages}
+        initialTitle={title}
         focusedPatient={null}
       />
     </div>
