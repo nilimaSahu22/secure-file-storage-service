@@ -17,6 +17,7 @@ const NAV_ITEMS = [
 
 export function PortalShell({ patientName, children }: { patientName: string; children: ReactNode }) {
   const pathname = usePathname();
+  const onAssistant = pathname === "/portal/assistant" || pathname.startsWith("/portal/assistant/");
 
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden bg-slate-50">
@@ -38,7 +39,7 @@ export function PortalShell({ patientName, children }: { patientName: string; ch
           </button>
         </div>
       </header>
-      <nav className="flex gap-1 border-b border-slate-200 bg-white px-6">
+      <nav className={`gap-1 border-b border-slate-200 bg-white px-6 ${onAssistant ? "hidden" : "flex"}`}>
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== "/portal" && pathname.startsWith(`${href}/`));
           return (
