@@ -9,6 +9,7 @@ import { getAnthropicClient, getDocModel } from "@/lib/ai/client";
 import { getObjectBytes, cheapDocumentChecks, finalizeFileDecision } from "@/lib/services/files";
 import { applyExtraction, matchFollowUps } from "@/lib/services/documentExtraction";
 import { autoFulfillByType } from "@/lib/services/documentRequests";
+import { notifyStaff } from "@/lib/services/notifications";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -188,7 +189,15 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
         documentDate: check.documentDate,
       });
       await matchFollowUps(file.patientId);
-      await autoFulfillByType(file.patientId, file.category, id);
+      const fulfilled = await autoFulfillByType(file.patientId, file.category, id);
+      if (fulfilled) {
+        await notifyStaff(fulfilled.requestedById, {
+          category: "document",
+          title: "Document uploaded",
+          body: `${accountName} uploaded "${fulfilled.documentType}".`,
+          linkPath: `/dashboard/patients/${file.patientId}`,
+        });
+      }
     } catch (err) {
       console.error("Document extraction / follow-up match failed:", err);
     }

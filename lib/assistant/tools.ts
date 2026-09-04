@@ -20,6 +20,7 @@ import { getAuditLogs } from "@/lib/services/auditLog";
 import { computeTrendFlags } from "@/lib/services/trendFlags";
 import { createDocumentRequest, listDocumentRequests } from "@/lib/services/documentRequests";
 import { logAudit } from "@/lib/audit";
+import { notifyStaff } from "@/lib/services/notifications";
 
 export interface ToolContext {
   ownerType: "staff" | "patient";
@@ -495,6 +496,14 @@ const staffWriteTools: WriteTool[] = [
         targetId: task.id,
         metadata: { patientId, via: "assistant" },
       });
+      if (task.assignedToId) {
+        await notifyStaff(task.assignedToId, {
+          category: "task",
+          title: "Task assigned to you",
+          body: `${await patientName(patientId)}: ${String(input.description)}`,
+          linkPath: "/dashboard/tasks",
+        });
+      }
       return { message: "Task added to the queue." };
     },
   },

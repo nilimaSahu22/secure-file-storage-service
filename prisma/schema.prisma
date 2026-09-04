@@ -553,6 +553,21 @@ model AuditLog {
   @@index([actorId])
 }
 
+model Notification {
+  id            String    @id @default(uuid())
+  recipientType String // "staff" | "patient"
+  recipientId   String
+  category      String // "appointment" | "task" | "document" | "priorauth" | "referral" | "visit" | "message"
+  title         String
+  body          String
+  linkPath      String?
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([recipientType, recipientId, readAt])
+  @@index([recipientType, recipientId, createdAt])
+}
+
 model DepartmentWorkflow {
   id             String     @id @default(uuid())
   department     Department @unique

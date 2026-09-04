@@ -223,6 +223,7 @@ const NOTES = [
 
 export async function seedDatabase(prisma: PrismaClient): Promise<void> {
   // Delete in FK-safe order (children before parents).
+  await prisma.notification.deleteMany();
   await prisma.assistantMessage.deleteMany();
   await prisma.assistantThread.deleteMany();
   await prisma.documentRequest.deleteMany();
@@ -442,6 +443,47 @@ export async function seedDatabase(prisma: PrismaClient): Promise<void> {
       status: "PENDING",
       createdAt: haroldVisitSignedAt,
     },
+  });
+  await prisma.notification.createMany({
+    data: [
+      {
+        recipientType: "patient",
+        recipientId: haroldId,
+        category: "document",
+        title: "Document requested",
+        body: "Dr. Elena Ramirez asked you to upload: Cardiology clinic letter.",
+        linkPath: "/portal/documents?type=Cardiology%20clinic%20letter",
+        createdAt: haroldVisitSignedAt,
+      },
+      {
+        recipientType: "patient",
+        recipientId: haroldId,
+        category: "visit",
+        title: "Visit summary ready",
+        body: "Your plain-language summary from your recent visit is available to read.",
+        linkPath: "/portal/visits",
+        createdAt: daysAgo(2),
+      },
+      {
+        recipientType: "staff",
+        recipientId: staffByKey.get("drRamirez")!,
+        category: "appointment",
+        title: "New appointment request",
+        body: "Harold Bramwell requested a visit — blood pressure follow-up.",
+        linkPath: "/dashboard/appointments",
+        createdAt: daysAgo(1),
+      },
+      {
+        recipientType: "staff",
+        recipientId: staffByKey.get("drRamirez")!,
+        category: "task",
+        title: "Task assigned to you",
+        body: "Margaret Okafor: review rising HbA1c trend and adjust plan.",
+        linkPath: "/dashboard/tasks",
+        readAt: daysAgo(0),
+        createdAt: daysAgo(3),
+      },
+    ],
   });
   await prisma.patientVisitSummary.create({
     data: {

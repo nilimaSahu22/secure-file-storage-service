@@ -3,6 +3,7 @@
 import { LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
 import type { Role } from "@prisma/client";
+import { NotificationBell } from "@/components/shell/NotificationBell";
 
 export function Topbar({ name, role }: { name: string; role: Role }) {
   return (
@@ -10,7 +11,8 @@ export function Topbar({ name, role }: { name: string; role: Role }) {
       <div className="text-sm text-slate-500">
         Signed in as <span className="font-medium text-slate-900">{name}</span>
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        <NotificationBell />
         <span className="rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700">
           {role.charAt(0) + role.slice(1).toLowerCase()}
         </span>

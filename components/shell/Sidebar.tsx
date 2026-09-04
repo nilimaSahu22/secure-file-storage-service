@@ -23,6 +23,7 @@ import type { Role } from "@prisma/client";
 import { getInitialsFromName } from "@/lib/format";
 import { ThreadList, HomeChatToggle, type ThreadSummary } from "@/components/assistant/ThreadList";
 import { useAssistant } from "@/components/assistant/AssistantController";
+import { NotificationBell } from "@/components/shell/NotificationBell";
 
 export const THREADS_CHANGED_EVENT = "assistant:threads-changed";
 
@@ -154,15 +155,18 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
           Meridian
         </div>
 
-        {/* Mobile/tablet: hamburger trigger only — nav, chat, and logout all live in the drawer. */}
-        <button
-          type="button"
-          onClick={() => setMenuOpen(true)}
-          aria-label="Open menu"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-50 min-[1201px]:hidden"
-        >
-          <Menu size={20} />
-        </button>
+        {/* Mobile/tablet: bell + hamburger — nav, chat, and logout live in the drawer. */}
+        <div className="flex items-center gap-1 min-[1201px]:hidden">
+          <NotificationBell />
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open menu"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-50"
+          >
+            <Menu size={20} />
+          </button>
+        </div>
 
         {/* Desktop: Home / Chat panel. */}
         <div className="hidden min-h-0 flex-1 min-[1201px]:flex min-[1201px]:flex-col">{panel}</div>

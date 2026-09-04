@@ -7,6 +7,7 @@ import { signOut } from "next-auth/react";
 import { Heart, Home, CalendarDays, FolderLock, Sparkles, Stethoscope, LogOut } from "lucide-react";
 import { AssistantProvider, useAssistant } from "@/components/assistant/AssistantController";
 import { AssistantDock } from "@/components/assistant/AssistantDock";
+import { NotificationBell } from "@/components/shell/NotificationBell";
 
 const NAV_ITEMS = [
   { href: "/portal", label: "Home", icon: Home },
@@ -26,8 +27,9 @@ function PortalChrome({ patientName, children }: { patientName: string; children
           <Heart size={18} className="text-blue-600" />
           Meridian
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-slate-500">
+        <div className="flex items-center gap-3">
+          <NotificationBell />
+          <span className="hidden text-sm text-slate-500 sm:inline">
             Hi, <span className="font-medium text-slate-900">{patientName}</span>
           </span>
           <button
