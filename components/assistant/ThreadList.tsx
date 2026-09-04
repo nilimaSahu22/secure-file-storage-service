@@ -59,9 +59,18 @@ interface ThreadListProps {
   onNewChat: () => void;
   onRename: (id: string, title: string) => void;
   onArchive: (id: string) => void;
+  showNewChat?: boolean;
 }
 
-export function ThreadList({ threads, activeId, onOpen, onNewChat, onRename, onArchive }: ThreadListProps) {
+export function ThreadList({
+  threads,
+  activeId,
+  onOpen,
+  onNewChat,
+  onRename,
+  onArchive,
+  showNewChat = true,
+}: ThreadListProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
@@ -75,12 +84,14 @@ export function ThreadList({ threads, activeId, onOpen, onNewChat, onRename, onA
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <button
-        onClick={onNewChat}
-        className="mb-1 flex w-full items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-      >
-        <SquarePen size={15} /> New chat
-      </button>
+      {showNewChat && (
+        <button
+          onClick={onNewChat}
+          className="mb-1 flex w-full items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          <SquarePen size={15} /> New chat
+        </button>
+      )}
       <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
         {threads === null && <p className="px-2 py-3 text-xs text-slate-400">Loading…</p>}
         {threads !== null && groups.length === 0 && (

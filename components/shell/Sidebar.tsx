@@ -17,6 +17,7 @@ import {
   Menu,
   X,
   LogOut,
+  SquarePen,
 } from "lucide-react";
 import type { Role } from "@prisma/client";
 import { getInitialsFromName } from "@/lib/format";
@@ -123,6 +124,12 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
 
   const panel = (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <button
+        onClick={newChat}
+        className="flex w-full items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+      >
+        <SquarePen size={15} /> New chat
+      </button>
       <HomeChatToggle value={tab} onChange={setTab} />
       {tab === "home" ? (
         <nav className="flex flex-col gap-1 overflow-y-auto">{items.map(navLink)}</nav>
@@ -130,6 +137,7 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
         <ThreadList
           threads={threads}
           activeId={activeThreadId}
+          showNewChat={false}
           onOpen={openThread}
           onNewChat={newChat}
           onRename={(id, title) => patchThread(id, { title })}
